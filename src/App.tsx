@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import './App.css'
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2pdf from 'html2pdf.js';
 import LogoUpload from './components/LogoUpload';
-import { PDFDownloadLink } from '@react-pdf/renderer';
-import { OfferPDFDocument, svgToPngDataUrl } from './components/OfferPDFExport';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import {
@@ -27,8 +25,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Notification } from './components/Notification';
-import type { OfferItem, OfferRow, CompanySettings, ItemRow, SectionRow, SubtotalRow } from './types';
-import { FaTrash } from 'react-icons/fa';
+import type { OfferItem, OfferRow, CompanySettings, ItemRow, SectionRow, SubtotalRow, ClientDetails } from './types';
+import { FaTrash, FaRegClone, FaChevronRight, FaRegFileAlt } from 'react-icons/fa';
+import { FaUser } from 'react-icons/fa';
 
 // Komponent pre zoznam ponúk
 function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
@@ -40,26 +39,82 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
   onClone: (id: string) => void;
 }) {
   return (
-    <div className="section">
-      <h1>Cenové ponuky</h1>
-      <div className="button-row" style={{marginBottom:32}}>
-        <button onClick={onNew}>+ Nová ponuka</button>
+    <div className="offer-card offer-live-preview" style={{ maxWidth: 700, margin: '0 auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', margin: 0, letterSpacing: -0.5 }}>Cenové ponuky</h1>
+        <button onClick={onNew} style={{ padding: '12px 28px', background: '#2346a0', color: 'white', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 17, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <FaRegFileAlt style={{ fontSize: 20 }} />
+          + Nová ponuka
+        </button>
       </div>
-      <ul>
-        {offers.length === 0 && <li>Žiadne ponuky</li>}
-        {offers.map(offer => (
-          <li key={offer.id}>
-            <div className="offer-row-top">
-              <b>{offer.name}</b> {offer.date && <span style={{marginLeft:8}}>({offer.date})</span>} – {offer.total.toFixed(2)} €
+      {offers.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#888', padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>Zatiaľ nemáte žiadne ponuky</div>
+          <div style={{ fontSize: 14, color: '#aaa', marginTop: 6 }}>Kliknite na <b>+ Nová ponuka</b> pre vytvorenie prvej ponuky.</div>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {offers.map((offer, idx) => (
+          <div
+            key={offer.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#fafdff',
+              borderRadius: idx === 0 ? '10px 10px 0 0' : idx === offers.length-1 ? '0 0 10px 10px' : '0',
+              border: '1px solid #dde6f3',
+              borderTop: idx === 0 ? '1px solid #dde6f3' : 'none',
+              padding: '20px 28px',
+              marginBottom: 0,
+              fontSize: 16,
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'background 0.18s, box-shadow 0.18s, border 0.18s',
+            }}
+            onClick={() => onEdit(offer.id)}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#f3f7fd';
+              e.currentTarget.style.boxShadow = '0 4px 24px #2346a022';
+              e.currentTarget.style.border = '1px solid #2346a0';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#fafdff';
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.border = '1px solid #dde6f3';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <FaRegFileAlt style={{ fontSize: 22, color: '#2346a0', marginRight: 8 }} />
+              <div>
+                <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 2 }}>{offer.name}</div>
+                <div style={{ color: '#888', fontSize: 15 }}>{offer.total.toFixed(2)} €</div>
+              </div>
             </div>
-            <div className="offer-row-actions button-row">
-              <button onClick={() => onEdit(offer.id)}>Upraviť</button>
-              <button onClick={() => onClone(offer.id)}>Klonovať</button>
-              <button onClick={() => onDelete(offer.id)}>Zmazať</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <button
+                className="offer-row-icon"
+                title="Klonovať ponuku"
+                style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
+                onClick={e => { e.stopPropagation(); onClone(offer.id); }}
+              >
+                <FaRegClone style={{ fontSize: 17, color: '#bbb', transition: 'color 0.18s' }} />
+              </button>
+              <button
+                className="offer-row-icon"
+                title="Vymazať ponuku"
+                style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
+                onClick={e => { e.stopPropagation(); onDelete(offer.id); }}
+              >
+                <FaTrash style={{ fontSize: 17, color: '#ccc', transition: 'color 0.18s' }} />
+              </button>
+              <FaChevronRight style={{ fontSize: 22, color: '#bbb', marginLeft: 10, userSelect: 'none', transition: 'color 0.18s', cursor: 'pointer' }} />
             </div>
-          </li>
+            {idx < offers.length-1 && <div style={{ position: 'absolute', left: 28, right: 28, bottom: -1, height: 1, background: '#dde6f3' }} />}
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
@@ -69,12 +124,14 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
   const [name, setName] = useState(initial?.name || '');
   const [date, setDate] = useState(initial?.date || '');
   const [client, setClient] = useState(initial?.client || '');
+  const [clientDetails, setClientDetails] = useState(initial?.clientDetails || null);
   const [note, setNote] = useState(initial?.note || '');
   const [items, setItems] = useState<OfferRow[]>(initial?.items || []);
   const [vatEnabled, setVatEnabled] = useState(initial?.vatEnabled ?? true);
   const [vatRate, setVatRate] = useState(initial?.vatRate ?? 20);
   const [rowType, setRowType] = useState<'item' | 'section' | 'subtotal'>('item');
   const [tableNote, setTableNote] = useState(initial?.tableNote || '');
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
 
   // Polia pre novú položku
   const [rowTitle, setRowTitle] = useState('');
@@ -95,29 +152,21 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
   const [settings, setSettings] = useState<CompanySettings>(() => {
     try {
       const data = localStorage.getItem('companySettings');
-      return data ? JSON.parse(data) : {
-        name: '', ico: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
+      const parsed = data ? JSON.parse(data) : null;
+      return parsed ? { ...parsed, dic: parsed.dic || '', icDph: parsed.icDph || '' } : {
+        name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
       };
     } catch {
-      return { name: '', ico: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
+      return { name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
     }
   });
 
-  // Přidám state pro PNG logo
-  const [logoForPdf, setLogoForPdf] = useState<{src: string, width?: number, height?: number}|string>(settings.logo);
-  useEffect(() => {
-    let cancelled = false;
-    async function convertLogo() {
-      if (settings.logo && settings.logo.startsWith('data:image/svg')) {
-        const { dataUrl, width, height } = await svgToPngDataUrl(settings.logo, 120, 60);
-        if (!cancelled) setLogoForPdf({ src: dataUrl, width, height });
-      } else {
-        setLogoForPdf(settings.logo);
-      }
-    }
-    convertLogo();
-    return () => { cancelled = true; };
-  }, [settings.logo]);
+  const [address, setAddress] = useState(settings.address || '');
+  const [zip, setZip] = useState(settings.zip || '');
+  const [city, setCity] = useState(settings.city || '');
+  const [country, setCountry] = useState(settings.country || 'Slovensko');
+
+  const [showDetails, setShowDetails] = useState(initial?.showDetails ?? true);
 
   function handleAddRow(e: React.FormEvent) {
     e.preventDefault();
@@ -162,15 +211,17 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
       name,
       date,
       client,
+      clientDetails,
       note,
       total,
       items,
       vatEnabled,
       vatRate,
       tableNote,
+      showDetails,
     });
     onNotify('Všetky zmeny boli automaticky uložené', 'success');
-  }, [name, date, client, note, items, vatEnabled, vatRate, tableNote]);
+  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -189,12 +240,14 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
       name,
       date,
       client,
+      clientDetails,
       note,
       total,
       items,
       vatEnabled,
       vatRate,
       tableNote,
+      showDetails,
     });
     setSuccess(true);
     setTimeout(() => onBack(), 700);
@@ -263,6 +316,110 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
     setItems(items => [...items, newSubtotal]);
   };
 
+  async function handleExportHighResPDF() {
+    // Priprav logo na export (ak SVG, konvertuj na PNG cez canvg)
+    let exportLogo = settings.logo;
+    if (settings.logo && settings.logo.startsWith('data:image/svg')) {
+      // Dynamicky importuj canvg
+      const { Canvg } = await import('canvg');
+      let svgData = '';
+      if (settings.logo.startsWith('data:image/svg+xml;base64,')) {
+        svgData = atob(settings.logo.split(',')[1]);
+      } else if (
+        settings.logo.startsWith('data:image/svg+xml;utf8,') ||
+        settings.logo.startsWith('data:image/svg+xml,')
+      ) {
+        svgData = decodeURIComponent(settings.logo.split(',')[1]);
+      } else {
+        svgData = settings.logo;
+      }
+      // Odstráň všetko pred <svg
+      const svgStart = svgData.indexOf('<svg');
+      if (svgStart !== -1) {
+        svgData = svgData.slice(svgStart);
+      }
+      // Nahradím všetky ' za " pre validné XML
+      svgData = svgData.replace(/'/g, '"');
+      // Kompletné čistenie SVG pre canvg
+      svgData = svgData
+        .replace(/class=["']cls-1["']/g, 'fill-rule="evenodd"')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
+        .replace(/<defs>[\s\S]*?<\/defs>/g, '')
+        .replace(/<title>[\s\S]*?<\/title>/g, '')
+        .replace(/class=["'][^"']*["']/g, '');
+      // Odstráň všetky atribúty z <svg ...> okrem xmlns a viewBox
+      svgData = svgData.replace(
+        /<svg[^>]*xmlns=["'][^"']*["'][^>]*viewBox=["'][^"']*["'][^>]*>/,
+        match => {
+          const xmlns = match.match(/xmlns=["'][^"']*["']/)?.[0] || '';
+          const viewBox = match.match(/viewBox=["'][^"']*["']/)?.[0] || '';
+          return `<svg ${xmlns} ${viewBox}>`;
+        }
+      );
+      // Odstráň id, data-name a iné neštandardné atribúty z <svg> a <path>
+      svgData = svgData
+        .replace(/ id=["'][^"']*["']/g, '')
+        .replace(/ data-name=["'][^"']*["']/g, '');
+      console.log('SVG pre canvg FINAL:', svgData.slice(0, 300));
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const v = await Canvg.fromString(ctx, svgData);
+        await v.render();
+        exportLogo = canvas.toDataURL('image/png');
+      }
+    }
+    // Vytvor dočasný kontajner mimo obrazovky
+    const tempDiv = document.createElement('div');
+    tempDiv.style.position = 'fixed';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.top = '0';
+    tempDiv.style.zIndex = '-1';
+    document.body.appendChild(tempDiv);
+
+    // Vyrenderuj OfferExportPreview do tempDiv
+    import('react-dom').then(ReactDOM => {
+      ReactDOM.render(
+        <OfferExportPreview
+          name={name}
+          date={date}
+          client={client}
+          clientDetails={clientDetails}
+          note={note}
+          items={items}
+          vatEnabled={vatEnabled}
+          vatRate={vatRate}
+          total={total}
+          tableNote={tableNote}
+          settings={{ ...settings, logo: exportLogo }}
+          showSupplierDetails={showDetails}
+          showClientDetails={showDetails}
+        />,
+        tempDiv,
+        () => {
+          import('html2pdf.js').then(html2pdf => {
+            html2pdf.default()
+              .set({
+                margin: 0,
+                filename: 'ponuka-kvalitna.pdf',
+                image: { type: 'jpeg', quality: 1 },
+                html2canvas: { scale: 4, useCORS: true },
+                jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+              })
+              .from(tempDiv.firstChild)
+              .save()
+              .then(() => {
+                ReactDOM.unmountComponentAtNode(tempDiv);
+                document.body.removeChild(tempDiv);
+              });
+          });
+        }
+      );
+    });
+  }
+
   // Live preview editor - hlavný wrapper
   return (
     <div className="offer-card offer-live-preview">
@@ -277,7 +434,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
             />
           ) : (
             <div
-              style={{ color: '#222', fontSize: 40, fontWeight: 700, cursor: 'pointer' }}
+              style={{ color: '#222', fontSize: 40, fontWeight: 700, cursor: 'pointer', borderBottom: '1px solid rgba(0,0,0,0.03)' }}
               contentEditable
               suppressContentEditableWarning
               onBlur={e => setSettings(s => ({ ...s, logo: e.currentTarget.textContent || '' }))}
@@ -287,15 +444,67 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
           )}
         </div>
         <div style={{ textAlign: 'right', fontSize: 16, color: '#888' }}>
-          <span contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, phone: e.currentTarget.textContent || '' }))}>{settings.phone || '+421 900 000 000'}</span>
+          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, phone: e.currentTarget.textContent || '' }))}>{settings.phone || '+421 900 000 000'}</span>
           <span style={{ margin: '0 8px' }}>|</span>
-          <span contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, email: e.currentTarget.textContent || '' }))}>{settings.email || 'info@email.sk'}</span>
+          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, email: e.currentTarget.textContent || '' }))}>{settings.email || 'info@email.sk'}</span>
           <span style={{ margin: '0 8px' }}>|</span>
-          <span contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, web: e.currentTarget.textContent || '' }))}>{settings.web || 'www.web.sk'}</span>
+          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, web: e.currentTarget.textContent || '' }))}>{settings.web || 'www.web.sk'}</span>
         </div>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24 }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
+      <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
         {name || 'Názov ponuky'}
+      </div>
+      {/* Klient + fakturačné údaje + switch vedľa seba */}
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ flex: 1 }}></div>
+        <button
+          onClick={() => setIsClientModalOpen(true)}
+          style={{
+            padding: '8px 16px',
+            background: '#2346a0',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 14,
+            fontWeight: 500
+          }}
+        >
+          <FaUser size={14} />
+          {clientDetails ? 'Upraviť fakturačné údaje' : 'Pridať fakturačné údaje'}
+        </button>
+        {/* Switch for fakturačné údaje v PDF */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, cursor: 'pointer', marginLeft: 8 }}>
+          <span style={{ fontSize: 14 }}>Zobraziť vo PDF</span>
+          <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20 }}>
+            <input type="checkbox" checked={showDetails} onChange={e => setShowDetails(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+            <span style={{
+              position: 'absolute',
+              cursor: 'pointer',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: showDetails ? '#2346a0' : '#ccc',
+              borderRadius: 20,
+              transition: 'background 0.2s',
+            }}></span>
+            <span style={{
+              position: 'absolute',
+              left: showDetails ? 18 : 2,
+              top: 2,
+              width: 16,
+              height: 16,
+              background: '#fff',
+              borderRadius: '50%',
+              boxShadow: '0 1px 4px #0002',
+              transition: 'left 0.2s',
+            }}></span>
+          </span>
+        </label>
       </div>
       {/* POLOŽKY A SEKCIÁ */}
       <ErrorBoundary>
@@ -360,15 +569,35 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
         <button type="button" className="add-row-btn" onClick={handleAddSection} style={{ marginLeft: 16 }}>+ Pridať sekciu</button>
         <button type="button" className="add-row-btn" onClick={handleAddSubtotal} style={{ marginLeft: 16 }}>+ Pridať medzisúčet</button>
       </div>
-      {/* DPH a sadzba */}
+      {/* DPH a sadzba - iPhone style switch */}
       <div style={{ margin: '32px 0 0 0', display: 'flex', alignItems: 'center', gap: 16 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
-          <input
-            type="checkbox"
-            checked={vatEnabled}
-            onChange={e => setVatEnabled(e.target.checked)}
-          />
-          S DPH
+          <span style={{ fontSize: 15 }}>S DPH</span>
+          <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20 }}>
+            <input type="checkbox" checked={vatEnabled} onChange={e => setVatEnabled(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+            <span style={{
+              position: 'absolute',
+              cursor: 'pointer',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: vatEnabled ? '#2346a0' : '#ccc',
+              borderRadius: 20,
+              transition: 'background 0.2s',
+            }}></span>
+            <span style={{
+              position: 'absolute',
+              left: vatEnabled ? 18 : 2,
+              top: 2,
+              width: 16,
+              height: 16,
+              background: '#fff',
+              borderRadius: '50%',
+              boxShadow: '0 1px 4px #0002',
+              transition: 'left 0.2s',
+            }}></span>
+          </span>
         </label>
         {vatEnabled && (
           <span>
@@ -398,7 +627,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
         </div>
       </div>
       {/* POZNÁMKA POD TABUĽKOU */}
-      <div className="table-note" contentEditable suppressContentEditableWarning onBlur={e => setTableNote(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: tableNote || 'Doplňujúce informácie, podmienky, atď.' }} />
+      <div className="table-note" style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setTableNote(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: tableNote || 'Doplňujúce informácie, podmienky, atď.' }} />
       {/* TLAČIDLÁ */}
       <div style={{ display: 'flex', gap: 16, marginTop: 32, justifyContent: 'flex-end' }}>
         <button
@@ -418,48 +647,23 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
         >
           Uložiť ponuku
         </button>
-        <PDFDownloadLink
-          document={
-            <OfferPDFDocument
-              offer={{
-                id: initial?.id || '',
-                name,
-                date,
-                client,
-                note,
-                total,
-                items,
-                vatEnabled,
-                vatRate,
-                tableNote,
-              }}
-              settings={{
-                ...settings,
-                logo: logoForPdf
-              }}
-            />
-          }
-          fileName={`ponuka-${name}.pdf`}
+        <button
+          type="button"
+          onClick={handleExportHighResPDF}
+          style={{
+            padding: '14px 32px',
+            background: '#2346a0',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 18,
+            fontWeight: 700,
+            cursor: 'pointer',
+            marginLeft: 8
+          }}
         >
-          {({ loading }) => (
-            <button
-              type="button"
-              style={{
-                padding: '14px 32px',
-                background: '#222',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 18,
-                fontWeight: 700,
-                cursor: 'pointer',
-                marginLeft: 8
-              }}
-            >
-              {loading ? 'Generujem PDF...' : 'Exportovať PDF'}
-            </button>
-          )}
-        </PDFDownloadLink>
+          Exportovať PDF (kvalitný screenshot)
+        </button>
         <button
           type="button"
           onClick={onBack}
@@ -477,75 +681,12 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
           Späť
         </button>
       </div>
-    </div>
-  );
-}
-
-function OfferPDFPreview({ offer, settings }: { offer: OfferItem, settings: CompanySettings }) {
-  const subtotal = offer.items?.reduce((sum, i) => sum + (i.qty || 0) * (i.price || 0), 0) ?? 0;
-  const vat = offer.vatEnabled ? subtotal * (offer.vatRate ?? 0) / 100 : 0;
-  const total = subtotal + vat;
-
-  const handleExportPDF = () => {
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
-    html2pdf()
-      .set({
-        margin: 0,
-        filename: `ponuka-${offer.name}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
-      })
-      .from(element)
-      .save();
-  };
-
-  return (
-    <div>
-      <div id="pdf-content" style={{ width: '900px', margin: '0 auto', background: '#fff', padding: 32, fontFamily: 'Arial, Helvetica, sans-serif' }}>
-        <div style={{ color: '#bbb', fontSize: 48, fontWeight: 700, marginBottom: 16 }}>LOGO</div>
-        <div style={{ textAlign: 'right', fontSize: 16, marginBottom: 8 }}>{settings.email}</div>
-        <h1 style={{ fontSize: 32, margin: '24px 0 16px 0' }}>Cenová ponuka na {offer.name}</h1>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}>
-          <thead>
-            <tr style={{ background: '#eee', fontWeight: 700 }}>
-              <th style={{ padding: 8, border: '1px solid #ccc' }}>Názov</th>
-              <th style={{ padding: 8, border: '1px solid #ccc' }}>Popis</th>
-              <th style={{ padding: 8, border: '1px solid #ccc' }}>Počet</th>
-              <th style={{ padding: 8, border: '1px solid #ccc' }}>Cena (EUR)</th>
-              <th style={{ padding: 8, border: '1px solid #ccc' }}>Medzisúčet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {offer.items?.map((item, idx) => (
-              <tr key={idx}>
-                <td style={{ padding: 8, border: '1px solid #ccc' }}>{item.title}</td>
-                <td style={{ padding: 8, border: '1px solid #ccc' }}>{item.desc}</td>
-                <td style={{ padding: 8, border: '1px solid #ccc', textAlign: 'right' }}>{item.qty}</td>
-                <td style={{ padding: 8, border: '1px solid #ccc', textAlign: 'right' }}>{item.price?.toFixed(2) || ''}</td>
-                <td style={{ padding: 8, border: '1px solid #ccc', textAlign: 'right' }}>
-                  {((item.qty || 0) * (item.price || 0)).toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-          <div style={{ marginRight: 32, textAlign: 'right' }}>
-            <div>Medzisúčet:</div>
-            {offer.vatEnabled && <div>DPH ({offer.vatRate}%):</div>}
-          </div>
-          <div style={{ minWidth: 120, textAlign: 'right' }}>
-            <div>{subtotal.toFixed(2)} EUR</div>
-            {offer.vatEnabled && <div>{vat.toFixed(2)} EUR</div>}
-          </div>
-        </div>
-        <div style={{ background: '#222', color: '#fff', fontWeight: 700, fontSize: 28, padding: 16, textAlign: 'right', marginTop: 24 }}>
-          {total.toFixed(2)} EUR
-        </div>
-      </div>
-      <button onClick={handleExportPDF} style={{ marginTop: 24 }}>Stiahnuť PDF</button>
+      <ClientDetailsModal
+        isOpen={isClientModalOpen}
+        onClose={() => setIsClientModalOpen(false)}
+        clientDetails={clientDetails}
+        onSave={setClientDetails}
+      />
     </div>
   );
 }
@@ -560,14 +701,7 @@ function OfferDetail({ offer, onBack }: { offer: OfferItem, onBack: () => void }
 
   return (
     <div className="section">
-      <OfferPDFPreview offer={offer} settings={settings} />
       <div className="button-row" style={{marginTop: 24, marginBottom: 24}}>
-        <PDFDownloadLink
-          document={<OfferPDFDocument offer={offer} settings={settings} />}
-          fileName={`ponuka-${offer.name}.pdf`}
-        >
-          {({ loading }) => loading ? 'Generujem PDF...' : 'Stiahnuť PDF (nový export)'}
-        </PDFDownloadLink>
         <button type="button" onClick={onBack}>Späť</button>
       </div>
     </div>
@@ -581,6 +715,8 @@ function SettingsForm({ settings, onSave, onBack }: {
 }) {
   const [name, setName] = useState(settings.name);
   const [ico, setIco] = useState(settings.ico);
+  const [dic, setDic] = useState(settings.dic || '');
+  const [icDph, setIcDph] = useState(settings.icDph || '');
   const [email, setEmail] = useState(settings.email);
   const [phone, setPhone] = useState(settings.phone || '');
   const [web, setWeb] = useState(settings.web || '');
@@ -588,68 +724,81 @@ function SettingsForm({ settings, onSave, onBack }: {
   const [defaultRate, setDefaultRate] = useState(settings.defaultRate);
   const [currency, setCurrency] = useState(settings.currency);
   const [pdfNote, setPdfNote] = useState(settings.pdfNote || '');
+  const [address, setAddress] = useState(settings.address || '');
+  const [zip, setZip] = useState(settings.zip || '');
+  const [city, setCity] = useState(settings.city || '');
+  const [country, setCountry] = useState(settings.country || 'Slovensko');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ name, ico, email, phone, web, logo, defaultRate, currency, pdfNote });
+    onSave({ name, ico, dic, icDph, address, zip, city, country, email, phone, web, logo, defaultRate, currency, pdfNote });
     onBack();
   }
 
   return (
-    <div>
-      <h2>Nastavenia firmy / freelancera</h2>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Názov:<br/>
-            <input value={name} onChange={e => setName(e.target.value)} />
-          </label>
+    <div className="offer-card offer-live-preview" style={{ maxWidth: 600, margin: '40px auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
+      <h2 style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', marginBottom: 28, letterSpacing: -0.5 }}>Nastavenia firmy / freelancera</h2>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 10 }}>Firemné údaje</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Názov:<br/>
+                <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČO:<br/>
+                <input value={ico} onChange={e => setIco(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DIČ:<br/>
+                <input value={dic} onChange={e => setDic(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČ DPH:<br/>
+                <input value={icDph} onChange={e => setIcDph(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Adresa:<br/>
+                <input value={address} onChange={e => setAddress(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div style={{ flex: 2 }}>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Mesto:<br/>
+                <input value={city} onChange={e => setCity(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>PSČ:<br/>
+                <input value={zip} onChange={e => setZip(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Krajina:<br/>
+                <input value={country} onChange={e => setCountry(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+          </div>
         </div>
-        <div>
-          <label>IČO:<br/>
-            <input value={ico} onChange={e => setIco(e.target.value)} />
-          </label>
+        <div style={{ borderTop: '1px solid #dde6f3', margin: '18px 0' }}></div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 10 }}>PDF nastavenia</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Poznámka pre PDF (bude pod tabuľkou):<br/>
+                <textarea value={pdfNote} onChange={e => setPdfNote(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
+              </label>
+            </div>
+          </div>
         </div>
-        <div>
-          <label>E-mail:<br/>
-            <input value={email} onChange={e => setEmail(e.target.value)} />
-          </label>
+        <div style={{ display: 'flex', gap: 18, justifyContent: 'flex-end', marginTop: 18 }}>
+          <button type="submit" style={{ padding: '12px 32px', background: '#2346a0', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 700, boxShadow: '0 2px 8px #2346a033', transition:'background 0.18s' }}>Uložiť</button>
+          <button type="button" onClick={onBack} style={{ padding: '12px 32px', background: '#666', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 700, boxShadow: '0 2px 8px #6662', transition:'background 0.18s' }}>Späť</button>
         </div>
-        <div>
-          <label>Telefón:<br/>
-            <input value={phone} onChange={e => setPhone(e.target.value)} />
-          </label>
-        </div>
-        <div>
-          <label>Web:<br/>
-            <input value={web} onChange={e => setWeb(e.target.value)} />
-          </label>
-        </div>
-        <div>
-          <label>Logo:<br/>
-            <LogoUpload value={logo} onChange={setLogo} onRemove={() => setLogo('')} />
-          </label>
-        </div>
-        <div>
-          <label>Predvolená sadzba (€):<br/>
-            <input type="number" min={0} value={defaultRate} onChange={e => setDefaultRate(Number(e.target.value))} />
-          </label>
-        </div>
-        <div>
-          <label>Mena:<br/>
-            <select value={currency} onChange={e => setCurrency(e.target.value)}>
-              <option value="EUR">EUR</option>
-              <option value="CZK">CZK</option>
-              <option value="USD">USD</option>
-            </select>
-          </label>
-        </div>
-        <div>
-          <label>Poznámka pre PDF (bude pod tabuľkou):<br/>
-            <textarea value={pdfNote} onChange={e => setPdfNote(e.target.value)} />
-          </label>
-        </div>
-        <button type="submit">Uložiť</button>
-        <button type="button" onClick={onBack}>Späť</button>
       </form>
     </div>
   );
@@ -806,6 +955,307 @@ function SortableItem({ item, index, isSection, isSubtotal, onEdit, onDelete, it
   );
 }
 
+function OfferExportPreview({ name, date, client, clientDetails, note, items, vatEnabled, vatRate, total, tableNote, settings, showSupplierDetails = true, showClientDetails = true }: any) {
+  // Moderný layout, krásny export
+  const subtotal = items.reduce((sum: number, i: any) => i.type === 'item' ? sum + (i.qty ?? 0) * (i.price ?? 0) : sum, 0);
+  const vat = vatEnabled ? subtotal * (vatRate ?? 0) / 100 : 0;
+  const clientBoxRef = useRef<HTMLDivElement>(null);
+  const supplierBoxRef = useRef<HTMLDivElement>(null);
+  const [boxHeight, setBoxHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (clientBoxRef.current && supplierBoxRef.current) {
+      const h1 = clientBoxRef.current.offsetHeight;
+      const h2 = supplierBoxRef.current.offsetHeight;
+      setBoxHeight(Math.max(h1, h2));
+    }
+  }, [clientDetails, settings]);
+  return (
+    <div style={{
+      maxWidth: 900,
+      margin: '0 auto',
+      background: '#fff',
+      borderRadius: 12,
+      boxShadow: '0 8px 48px #0002',
+      padding: 36,
+      fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif',
+      color: '#222',
+      minHeight: 900,
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Header: logo + kontakty */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div style={{ minHeight: 60, minWidth: 180, display: 'flex', alignItems: 'center' }}>
+          {settings.logo && settings.logo.startsWith('data:') ? (
+            <img
+              src={settings.logo}
+              alt="Logo"
+              style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001' }}
+            />
+          ) : (
+            <div style={{ color: '#bbb', fontSize: 36, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 14, color: '#222', lineHeight: 1.4 }}>
+          <div style={{ color: '#2346a0', fontWeight: 700, fontSize: 16 }}>{settings.email}</div>
+          <div style={{ color: '#888', fontSize: 14 }}>{settings.phone} | {settings.web}</div>
+        </div>
+      </div>
+      {/* Nadpis */}
+      <div style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', marginBottom: 4, letterSpacing: -0.5 }}>Cenová ponuka</div>
+      <div style={{ color: '#888', fontSize: 16, marginBottom: 8, fontWeight: 500 }}>{name}</div>
+      <div style={{ color: '#888', fontSize: 14, marginBottom: 24 }}>{date && <>Dátum: {date}</>}</div>
+      <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', marginBottom: 20, gap: 16 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {showClientDetails && clientDetails && (
+            <div ref={clientBoxRef} style={{ background: '#fafdff', padding: 10, borderRadius: 6, fontSize: 12, color: '#444', lineHeight: 1.3, minHeight: boxHeight, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+              <div style={{ fontWeight: 600, color: '#2346a0', marginBottom: 6, fontSize: 13 }}>Fakturačné údaje klienta:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ fontWeight: 500 }}>{clientDetails.name}</div>
+                <div>{clientDetails.address}</div>
+                <div>{clientDetails.zip}</div>
+                <div>{clientDetails.city}</div>
+                <div>{clientDetails.country}</div>
+                <div>IČO: {clientDetails.ico}</div>
+                {clientDetails.dic && <div>DIČ: {clientDetails.dic}</div>}
+                {clientDetails.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+          {showSupplierDetails && (
+            <div ref={supplierBoxRef} style={{ background: '#fafdff', padding: 10, borderRadius: 6, fontSize: 12, color: '#444', lineHeight: 1.3, minHeight: boxHeight, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+              <div style={{ fontWeight: 600, color: '#2346a0', marginBottom: 6, fontSize: 13 }}>Fakturačné údaje dodávateľa:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ fontWeight: 500 }}>{settings.name}</div>
+                <div>{settings.address}</div>
+                <div>{settings.zip}</div>
+                <div>{settings.city}</div>
+                <div>{settings.country}</div>
+                <div>IČO: {settings.ico}</div>
+                {settings.dic && <div>DIČ: {settings.dic}</div>}
+                {settings.icDph && <div>IČ DPH: {settings.icDph}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Tabuľka položiek */}
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, marginBottom: 28, fontSize: 14, background: '#fafdff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 8px #0001' }}>
+        <thead>
+          <tr style={{ background: '#eaf1fb', color: '#2346a0', fontWeight: 800 }}>
+            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'left', fontSize: 14 }}>Názov položky / Popis</th>
+            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Počet</th>
+            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Cena (€)</th>
+            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Medzisúčet (€)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item: any, idx: number) => (
+            item.type === 'section' ? (
+              <tr key={idx} style={{ background: '#f3f7fd' }}>
+                <td colSpan={4} style={{ padding: 8, fontWeight: 800, color: '#2346a0', fontSize: 15, border: '1px solid #dde6f3', borderLeft: '4px solid #2346a0', background: '#f3f7fd' }}>{item.title}</td>
+              </tr>
+            ) : item.type === 'subtotal' ? (
+              <tr key={idx} style={{ background: '#eaf1fb' }}>
+                <td colSpan={3} style={{ padding: 8, textAlign: 'right', fontWeight: 700, color: '#2346a0', border: '1px solid #dde6f3', fontSize: 14 }}>Cena spolu:</td>
+                <td style={{ padding: 8, textAlign: 'right', fontWeight: 900, color: '#2346a0', border: '1px solid #dde6f3', fontSize: 15 }}>{subtotal.toFixed(2)} €</td>
+              </tr>
+            ) : (
+              <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#f6fafd' }}>
+                <td style={{ padding: 8, border: '1px solid #dde6f3' }}>
+                  <div style={{ fontWeight: 700, color: '#222', fontSize: 14 }}>{item.title}</div>
+                  {item.desc && <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>{item.desc}</div>}
+                </td>
+                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 500 }}>{item.qty}</td>
+                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 500 }}>{item.price !== undefined ? item.price.toFixed(2) + ' €' : ''}</td>
+                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 700 }}>{((item.qty ?? 0) * (item.price ?? 0)).toFixed(2)} €</td>
+              </tr>
+            )
+          ))}
+        </tbody>
+      </table>
+      {/* Sumár v čiernom boxe */}
+      <div style={{ background: '#111', color: '#fff', borderRadius: 8, padding: '24px 28px', margin: '24px 0 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px #0002' }}>
+        <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: 0.5 }}>Výsledná cena spolu:</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.5 }}>{total.toFixed(2)} {settings.currency}</div>
+          {vatEnabled && <div style={{ fontSize: 14, color: '#ccc', fontWeight: 400, marginTop: 2 }}>vrátane DPH ({vatRate}%)</div>}
+        </div>
+      </div>
+      {/* Poznámky a podmienky */}
+      {(settings.pdfNote || note || tableNote) && (
+        <div style={{ color: '#666', fontSize: 12, marginBottom: 24, lineHeight: 1.4 }}>
+          {settings.pdfNote && <div style={{ marginBottom: 4 }}>{settings.pdfNote}</div>}
+          {note && <div style={{ marginBottom: 4 }}>{note}</div>}
+          {tableNote && <div>{tableNote}</div>}
+        </div>
+      )}
+      {/* Footer v šedom pruhu */}
+      <div style={{ background: '#f3f3f7', color: '#888', fontSize: 13, textAlign: 'center', borderRadius: 6, padding: 14, marginTop: 24, letterSpacing: 0.5 }}>
+        {settings.name} | IČO: {settings.ico} | {settings.email} | {settings.web}
+      </div>
+    </div>
+  );
+}
+
+// Add ClientDetailsModal component
+function ClientDetailsModal({ isOpen, onClose, clientDetails, onSave }: {
+  isOpen: boolean;
+  onClose: () => void;
+  clientDetails: ClientDetails | null;
+  onSave: (details: ClientDetails) => void;
+}) {
+  const [details, setDetails] = useState<ClientDetails>(clientDetails || {
+    name: '',
+    company: '',
+    ico: '',
+    dic: '',
+    icDph: '',
+    address: '',
+    city: '',
+    zip: '',
+    country: 'Slovensko'
+  });
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        background: 'white',
+        padding: 18,
+        borderRadius: 10,
+        width: '100%',
+        maxWidth: 420,
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        boxShadow: '0 4px 32px #0002',
+      }}>
+        <h2 style={{ marginTop: 0, marginBottom: 16, color: '#2346a0', fontSize: 20 }}>Fakturačné údaje klienta</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Meno / Firma</label>
+            <input
+              type="text"
+              value={details.name}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, name: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČO</label>
+            <input
+              type="text"
+              value={details.ico}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, ico: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DIČ</label>
+            <input
+              type="text"
+              value={details.dic}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, dic: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČ DPH</label>
+            <input
+              type="text"
+              value={details.icDph}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, icDph: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Adresa</label>
+            <input
+              type="text"
+              value={details.address}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, address: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Mesto</label>
+            <input
+              type="text"
+              value={details.city}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, city: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>PSČ</label>
+            <input
+              type="text"
+              value={details.zip}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, zip: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Krajina</label>
+            <input
+              type="text"
+              value={details.country}
+              onChange={e => setDetails((d: ClientDetails) => ({ ...d, country: e.target.value }))}
+              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+            />
+          </div>
+        </div>
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px',
+              background: '#f3f3f7',
+              border: 'none',
+              borderRadius: 5,
+              cursor: 'pointer',
+              fontSize: 13
+            }}
+          >
+            Zrušiť
+          </button>
+          <button
+            onClick={() => {
+              onSave(details);
+              onClose();
+            }}
+            style={{
+              padding: '7px 16px',
+              background: '#2346a0',
+              color: 'white',
+              border: 'none',
+              borderRadius: 5,
+              cursor: 'pointer',
+              fontSize: 13
+            }}
+          >
+            Uložiť
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [offers, setOffers] = useState<OfferItem[]>(() => {
     try {
@@ -820,17 +1270,19 @@ function App() {
   const [settings, setSettings] = useState<CompanySettings>(() => {
     try {
       const data = localStorage.getItem('companySettings');
-      return data ? JSON.parse(data) : {
-        name: '', ico: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
+      const parsed = data ? JSON.parse(data) : null;
+      return parsed ? { ...parsed, dic: parsed.dic || '', icDph: parsed.icDph || '' } : {
+        name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
       };
     } catch {
-      return { name: '', ico: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
+      return { name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
     }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [cloneData, setCloneData] = useState<OfferItem | undefined>(undefined);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [activeTab, setActiveTab] = useState<'list' | 'settings'>('list');
 
   // Funkce pro autosave z editoru
   const handleAutosave = (offer: OfferItem) => {
@@ -953,35 +1405,79 @@ function App() {
   };
 
   return (
-    <div className="container">
-      {view === 'list' && !settingsOpen && (
-        <button style={{float:'right'}} onClick={() => setSettingsOpen(true)}>Nastavenia</button>
-      )}
-      {view === 'list' && (
-        <OfferList 
-          offers={offers} 
-          onNew={handleNew} 
-          onSelect={handleSelect} 
-          onDelete={handleDelete} 
-          onEdit={handleEdit} 
-          onClone={handleClone} 
-        />
-      )}
-      {view === 'form' && (
-        <OfferForm
-          onSave={handleSave}
-          onAutosave={handleAutosave}
-          initial={editId ? offers.find(o => o.id === editId) : cloneData}
-          onBack={handleBack}
-          onNotify={(msg: string, type: 'success' | 'error' | 'info') => setNotification({ message: msg, type })}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsForm 
-          settings={settings} 
-          onSave={handleSettingsSave} 
-          onBack={() => setSettingsOpen(false)} 
-        />
+    <div style={{ background: '#f5f6fa', minHeight: '100vh', padding: 0 }}>
+      {view === 'form' ? (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <OfferForm
+            onSave={handleSave}
+            onAutosave={handleAutosave}
+            initial={editId ? offers.find(o => o.id === editId) : cloneData}
+            onBack={handleBack}
+            onNotify={(msg: string, type: 'success' | 'error' | 'info') => setNotification({ message: msg, type })}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Top navigation bar with tabs */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 40, marginTop: 40, background: 'transparent', boxShadow: 'none', borderRadius: 0, padding: 0 }}>
+            <div style={{ display: 'flex', gap: 0, background: 'transparent', boxShadow: 'none', borderRadius: 0, padding: 0 }}>
+              <button
+                onClick={() => { setActiveTab('list'); setSettingsOpen(false); setView('list'); }}
+                style={{
+                  padding: '16px 40px',
+                  background: activeTab === 'list' ? '#2346a0' : 'transparent',
+                  color: activeTab === 'list' ? '#fff' : '#2346a0',
+                  fontWeight: 700,
+                  fontSize: 18,
+                  border: 'none',
+                  borderRadius: activeTab === 'list' ? 12 : 12,
+                  cursor: 'pointer',
+                  boxShadow: 'none',
+                  transition: 'background 0.18s, color 0.18s',
+                  marginRight: 2,
+                }}
+              >
+                Cenové ponuky
+              </button>
+              <button
+                onClick={() => { setActiveTab('settings'); setSettingsOpen(true); setView('list'); }}
+                style={{
+                  padding: '16px 40px',
+                  background: activeTab === 'settings' ? '#2346a0' : 'transparent',
+                  color: activeTab === 'settings' ? '#fff' : '#2346a0',
+                  fontWeight: 700,
+                  fontSize: 18,
+                  border: 'none',
+                  borderRadius: activeTab === 'settings' ? 12 : 12,
+                  cursor: 'pointer',
+                  boxShadow: 'none',
+                  transition: 'background 0.18s, color 0.18s',
+                  marginLeft: 2,
+                }}
+              >
+                Nastavenia
+              </button>
+            </div>
+          </div>
+          {/* Main content */}
+          {activeTab === 'list' && !settingsOpen && (
+            <OfferList 
+              offers={offers} 
+              onNew={handleNew} 
+              onSelect={handleSelect} 
+              onDelete={handleDelete} 
+              onEdit={handleEdit} 
+              onClone={handleClone} 
+            />
+          )}
+          {settingsOpen && (
+            <SettingsForm 
+              settings={settings} 
+              onSave={handleSettingsSave} 
+              onBack={() => { setSettingsOpen(false); setActiveTab('list'); }} 
+            />
+          )}
+        </>
       )}
       {notification && (
         <Notification

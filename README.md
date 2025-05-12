@@ -1,54 +1,53 @@
-# React + TypeScript + Vite
+# Cenové Ponuky App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Moderná webová aplikácia pre vytváranie a správu cenových ponúk s možnosťou exportu do PDF.
 
-Currently, two official plugins are available:
+## Funkcie
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Vytváranie a editácia cenových ponúk
+- Drag & drop usporiadanie položiek
+- Sekcie a medzisúčty
+- Podpora DPH
+- Export do PDF s vysokou kvalitou
+- Správa firemných údajov
+- Správa údajov klienta
+- Automatické ukladanie
+- Moderné a responzívne UI
 
-## Expanding the ESLint configuration
+## Technológie
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React
+- TypeScript
+- html2pdf.js pre export PDF
+- @dnd-kit pre drag & drop
+- React Quill pre rich text editor
+- LocalStorage pre ukladanie dát
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Inštalácia
+
+1. Naklonujte repozitár:
+```bash
+git clone [URL_REPOZITÁRA]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+2. Nainštalujte závislosti:
+```bash
+npm install
 ```
+
+3. Spustite vývojový server:
+```bash
+npm start
+```
+
+## Použitie
+
+1. Najprv vyplňte firemné údaje v sekcii "Nastavenia"
+2. Vytvorte novú cenovú ponuku kliknutím na "+ Nová ponuka"
+3. Pridajte položky, sekcie a medzisúčty
+4. Upravte DPH podľa potreby
+5. Exportujte do PDF
+
+## Licencia
+
+MIT

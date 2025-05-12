@@ -210,12 +210,12 @@ export function OfferPDFDocument({ offer, settings }: { offer: OfferItem, settin
             isLogoWithSize(logoObj) ? (
               <Image
                 src={logoObj.src}
-                style={{ width: logoObj.width, height: logoObj.height, objectFit: 'contain' }}
+                style={{ width: 200, height: Math.round(200 * (logoObj.height / logoObj.width)), objectFit: 'contain' }}
               />
             ) : (
               <Image
                 src={logoObj.src}
-                style={{ objectFit: 'contain' }}
+                style={{ width: 200, objectFit: 'contain' }}
               />
             )
           ) : (
@@ -328,7 +328,9 @@ export function OfferPDFDocument({ offer, settings }: { offer: OfferItem, settin
 }
 
 // Utility: SVG to PNG (base64) conversion s udržením poměru stran a výstupem rozměrů
-export async function svgToPngDataUrl(svgDataUrl: string, maxWidth = 120, maxHeight = 60): Promise<{dataUrl: string, width: number, height: number}> {
+export async function svgToPngDataUrl(svgDataUrl: string, maxWidth = 800, maxHeight = 400): Promise<{dataUrl: string, width: number, height: number}> {
+  // Dynamicky importuj canvg
+  const { Canvg } = await import('canvg');
   return new Promise((resolve, reject) => {
     let width = maxWidth;
     let height = maxHeight;
@@ -344,28 +346,28 @@ export async function svgToPngDataUrl(svgDataUrl: string, maxWidth = 120, maxHei
         width = parseFloat(matchVB[3]);
         height = parseFloat(matchVB[4]);
       }
-      // Nejprve nastavím width=maxWidth, height dopočítám podle poměru stran
+      // Zachovaj pomer strán a maximalizuj do maxWidth/maxHeight
       const ratio = width / height;
-      width = maxWidth;
-      height = Math.round(width / ratio);
-      // Pokud height > maxHeight, nastavím height=maxHeight a width dopočítám
+      if (width > maxWidth) {
+        width = maxWidth;
+        height = Math.round(width / ratio);
+      }
       if (height > maxHeight) {
         height = maxHeight;
         width = Math.round(height * ratio);
       }
-    } catch {}
-    const img = new window.Image();
-    img.onload = function () {
+      // Vytvor canvas a vykresli SVG cez canvg
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject('Canvas context error');
-      ctx.clearRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve({ dataUrl: canvas.toDataURL('image/png'), width, height });
-    };
-    img.onerror = reject;
-    img.src = svgDataUrl;
+      const v = Canvg.fromString(ctx, svgText);
+      v.render().then(() => {
+        resolve({ dataUrl: canvas.toDataURL('image/png'), width, height });
+      }).catch(reject);
+    } catch (e) {
+      reject(e);
+    }
   });
 } 
