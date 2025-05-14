@@ -391,26 +391,61 @@ input[type="url"] {
 
 /* Pridám špecifické pravidlo pre .pdf-bullets ul li: */
 .pdf-bullets ul {
-  all: unset;
   list-style-type: disc !important;
-  padding-left: 1.5em !important;
-  margin: 0 !important;
+  padding-left: 18px !important;
+  margin: 4px 0 !important;
   display: block !important;
 }
 
 .pdf-bullets ul li {
-  all: unset;
   display: list-item !important;
   list-style-type: disc !important;
   color: #888 !important;
   font-size: 11px !important;
-  margin: 0 !important;
+  margin-bottom: 3px !important;
   padding: 0 !important;
   background: none !important;
   border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
   gap: 0 !important;
-  flex-direction: initial !important;
-  line-height: 1.4 !important;
+}
+
+.pdf-bullets ul ul {
+  padding-left: 24px !important;
+  margin-top: 3px !important;
+  margin-bottom: 3px !important;
+  display: block !important;
+}
+
+.pdf-bullets ul ul li {
+  list-style-type: circle !important;
+  color: #999 !important;
+  display: list-item !important;
+}
+
+/* Štýly pre ReactQuill editor */
+.ql-editor {
+  font-family: 'Noto Sans', sans-serif !important;
+  font-size: 13px !important;
+}
+
+.ql-editor ul {
+  padding-left: 1.5em !important;
+  margin: 4px 0 !important;
+}
+
+.ql-editor ul ul {
+  padding-left: 1.5em !important;
+  margin: 3px 0 !important;
+}
+
+.ql-editor li {
+  list-style-type: disc !important;
+  padding-left: 0.2em !important;
+  margin-bottom: 3px !important;
+}
+
+.ql-editor li li {
+  list-style-type: circle !important;
 }

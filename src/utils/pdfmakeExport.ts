@@ -40,84 +40,92 @@ function htmlBulletsToIndentedTextLines(html: string, level = 0): string[] {
 
 // Recursively convert HTML <ul><li>...</li></ul> to pdfmake ul structure
 function htmlBulletsToPdfmakeList(html: string): any {
-  if (!html || !html.includes('<ul>')) {
+  if (!html) return { text: '', fontSize: 10, color: '#666' };
+  
+  // Odstráň <p> tagy a ďalšie nepotrebné tagy, ale zachovaj <ul> a <li>
+  html = html
+    .replace(/<p[^>]*>/gi, '')
+    .replace(/<\/p>/gi, '')
+    .replace(/ class="[^"]*"/gi, '')
+    .replace(/ style="[^"]*"/gi, '')
+    .replace(/ data-[^=]+="[^"]*"/gi, '')
+    .replace(/>\s+</g, '><')
+    .trim();
+  
+  console.log("HTML pre PDF:", html);
+  
+  // Ak je to len text bez bullet listov, vráť čistý text
+  if (!html.includes('<ul') && !html.includes('<li')) {
     return { text: html.replace(/<[^>]+>/g, '').trim(), fontSize: 10, color: '#666' };
   }
 
-  // Funkcia na čistenie textu od HTML tagov
-  const cleanText = (text: string): string => text.replace(/<[^>]+>/g, '').trim();
+  // Funkcia na extrakciu obsahu <li> elementu vrátane vnoreného <ul>
+  function extractLiContent(liHtml: string): { text: string, nestedUl: string | null } {
+    // Nájdi vnorený <ul> ak existuje
+    const nestedUlMatch = /<ul[^>]*>([\s\S]*?)<\/ul>/i.exec(liHtml);
+    const nestedUl = nestedUlMatch ? nestedUlMatch[0] : null;
+    
+    // Získaj text pred vnoreným <ul>
+    let text = liHtml;
+    if (nestedUl) {
+      text = liHtml.substring(0, liHtml.indexOf(nestedUl));
+    }
+    
+    // Odstráň HTML tagy z textu
+    text = text.replace(/<[^>]+>/g, '').trim();
+    
+    return { text, nestedUl };
+  }
   
-  // Funkcia na extrakciu <li> elementov z <ul>
-  const extractListItems = (ulHtml: string): string[] => {
+  // Funkcia na spracovanie <ul> elementu a jeho položiek
+  function processUl(ulHtml: string, level: number = 0): any {
+    // Extrahuj všetky <li> elementy
     const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-    const items: string[] = [];
+    const items = [];
     let match;
     
     while ((match = liRegex.exec(ulHtml)) !== null) {
-      items.push(match[1]);
-    }
-    
-    return items;
-  };
-  
-  // Funkcia na vytvorenie PDFMake zoznamu
-  const createPdfList = (items: string[], level = 0): any[] => {
-    return items.map(item => {
-      // Skontroluj, či položka obsahuje vnorený <ul>
-      const hasNestedUl = item.includes('<ul>');
+      const liContent = match[1];
+      const { text, nestedUl } = extractLiContent(liContent);
       
-      if (hasNestedUl) {
-        // Rozdeľ na text a vnorený <ul>
-        const parts = item.split(/<ul[^>]*>/i);
-        const textContent = cleanText(parts[0]);
-        
-        // Extrahuj vnorený <ul> a jeho položky
-        const nestedUlMatch = /<ul[^>]*>([\s\S]*?)<\/ul>/i.exec(item);
-        if (nestedUlMatch) {
-          const nestedItems = extractListItems(nestedUlMatch[0]);
-          
-          // Vytvor položku s textom a vnoreným zoznamom
-          return {
-            text: textContent,
-            margin: [level * 10, 0, 0, 0],
-            fontSize: 10,
-            color: '#666',
-            ul: createPdfList(nestedItems, level + 1)
-          };
-        }
-      }
-      
-      // Jednoduchá položka bez vnorenia
-      return {
-        text: cleanText(item),
-        margin: [level * 10, 0, 0, 0],
+      const item: any = {
+        text: text || ' ',
+        margin: [level * 5, level > 0 ? 2 : 0, 0, level > 0 ? 2 : 0],
         fontSize: 10,
         color: level === 0 ? '#666' : '#888'
       };
-    });
-  };
-  
-  // Nájdi hlavný <ul> element a spracuj jeho položky
-  const mainUlMatch = /<ul[^>]*>([\s\S]*?)<\/ul>/i.exec(html);
-  if (mainUlMatch) {
-    const mainItems = extractListItems(mainUlMatch[0]);
+      
+      // Ak existuje vnorený <ul>, spracuj ho rekurzívne
+      if (nestedUl) {
+        item.ul = processUl(nestedUl, level + 1).ul;
+      }
+      
+      items.push(item);
+    }
     
-    // Vytvor PDFMake štruktúru pre zoznam s vlastnými markermi
     return {
-      ul: createPdfList(mainItems),
+      ul: items,
       style: {
         fontSize: 10,
         color: '#666'
-      },
-      markerColor: '#666'
+      }
     };
   }
   
+  // Nájdi hlavný <ul> element a spracuj ho
+  const mainUlMatch = /<ul[^>]*>([\s\S]*?)<\/ul>/i.exec(html);
+  if (mainUlMatch) {
+    const mainUl = mainUlMatch[0];
+    return processUl(mainUl);
+  }
+  
   // Fallback ak sa nenašiel <ul>
-  return { text: cleanText(html), fontSize: 10, color: '#666' };
+  return { text: html.replace(/<[^>]+>/g, '').trim(), fontSize: 10, color: '#666' };
 }
 
 export async function exportOfferPdfWithPdfmake(offer: OfferItem, settings: CompanySettings) {
+  console.log("exportOfferPdfWithPdfmake - offer:", offer);
+  
   // Priprav logo (SVG alebo PNG/JPG)
   let logoImage = undefined;
   if (settings.logo?.startsWith('data:image/svg')) {
@@ -170,8 +178,10 @@ export async function exportOfferPdfWithPdfmake(offer: OfferItem, settings: Comp
     ],
     ...offer.items.map(item => {
       let desc: any = item.desc || '';
-      if (desc.includes('<ul>')) {
+      if (desc.includes('<ul')) {
+        console.log("Item with bullet list:", item.title, desc);
         desc = htmlBulletsToPdfmakeList(desc);
+        console.log("Processed bullet list for PDF:", desc);
       }
       return [
         { text: item.title, bold: item.type === 'section', fillColor: item.type === 'section' ? '#fafdff' : undefined },
@@ -213,6 +223,21 @@ export async function exportOfferPdfWithPdfmake(offer: OfferItem, settings: Comp
       settings.pdfNote ? { text: settings.pdfNote, fontSize: 10, margin: [0, 10, 0, 0] } : {},
       offer.note ? { text: offer.note, fontSize: 10, margin: [0, 2, 0, 0] } : {},
       offer.tableNote ? { text: offer.tableNote, fontSize: 10, margin: [0, 2, 0, 0] } : {},
+      // Footer v šedom pruhu
+      {
+        canvas: [{ type: 'rect', x: 0, y: 0, w: 515, h: 30, r: 4, color: '#f3f3f7' }],
+        margin: [0, 20, 0, 0]
+      },
+      {
+        text: [
+          { text: settings.name, color: '#666', fontSize: 9 },
+          settings.ico ? { text: ` | IČO: ${settings.ico}`, color: '#666', fontSize: 9 } : '',
+          settings.dic ? { text: ` | DIČ: ${settings.dic}`, color: '#666', fontSize: 9 } : '',
+          settings.icDph ? { text: ` | IČ DPH: ${settings.icDph}`, color: '#666', fontSize: 9 } : ''
+        ],
+        alignment: 'center',
+        margin: [-5, -20, 0, 0]
+      }
     ],
     styles: {
       header: { fontSize: 20, bold: true, margin: [0, 10, 0, 10] }

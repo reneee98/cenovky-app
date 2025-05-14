@@ -36,47 +36,84 @@ import { createRoot } from 'react-dom/client';
 function extractBullets(html: string): string {
   if (!html) return '';
   
-  // Odstráň všetky div, p, span, class, style, data-*
-  html = html
-    .replace(/<(\/)?(div|p|span)[^>]*>/gi, '')
-    .replace(/ class="[^"]*"/gi, '')
-    .replace(/ style="[^"]*"/gi, '')
-    .replace(/ data-[^=]+="[^"]*"/gi, '')
-    .replace(/<br\s*\/?>(\s*)?/gi, ' ')
-    .replace(/\n/g, ' ')
-    .replace(/\r/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Ak je v texte <ul>, zachovaj ho ako je
-  if (/<ul[\s>]/.test(html)) {
-    // Vyčisti HTML, ale zachovaj <ul> a <li> štruktúru
-    html = html
-      .replace(/<(?!\/?ul|\/?li)[^>]+>/g, '') // Odstráň všetky tagy okrem ul a li
-      .replace(/>\s+</g, '><') // Odstráň whitespace medzi tagmi
+  console.log('extractBullets input:', html);
+  
+  // Špeciálne spracovanie pre ReactQuill HTML
+  if (html.includes('<ul') || html.includes('<li')) {
+    // Odstráň <p> tagy okolo <ul>
+    let cleanedHtml = html
+      .replace(/<p>\s*<ul/g, '<ul')
+      .replace(/<\/ul>\s*<\/p>/g, '</ul>')
+      // Zachovaj vnorené <ul> a <li>
+      .replace(/<li[^>]*><p[^>]*>([\s\S]*?)<\/p><ul/g, '<li>$1<ul')
+      // Odstráň atribúty z <ul> a <li> tagov ale zachovaj štruktúru
+      .replace(/<(ul|li)[^>]*>/gi, (match) => {
+        if (match.startsWith('<ul')) return '<ul>';
+        if (match.startsWith('<li')) return '<li>';
+        return match;
+      })
+      // Odstráň prázdne <p> tagy
+      .replace(/<p>\s*<\/p>/gi, '')
+      // Odstráň <br> tagy
+      .replace(/<br\s*\/?>/gi, '')
+      // Vyčisti whitespace
+      .replace(/>\s+</g, '><')
       .trim();
     
-    return html;
+    // Ak je to len text bez bullet listov, vráť čistý text
+    if (!cleanedHtml.includes('<ul') && !cleanedHtml.includes('<li')) {
+      return cleanedHtml.replace(/<[^>]+>/g, '').trim();
+    }
+    
+    console.log('Cleaned HTML output:', cleanedHtml);
+    return cleanedHtml;
   }
-
-  // Rozdel podľa bodiek, nových riadkov alebo stredníka
-  let lines: string[] = [];
-  if (html.includes('• ')) {
-    lines = html.split(/•\s+/).map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
-  } else if (html.includes(';')) {
-    lines = html.split(';').map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
-  } else {
-    lines = html.split(/\s+/).map(l => l.trim()).filter(Boolean);
+  
+  // Pre obyčajný text bez HTML
+  const plainText = html.replace(/<[^>]+>/g, '').trim();
+  
+  // Ak text obsahuje odrážky, vytvor z nich HTML bullet list
+  if (plainText.includes('• ')) {
+    const items = plainText.split('• ').filter(item => item.trim().length > 0);
+    if (items.length > 0) {
+      const result = '<ul>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ul>';
+      console.log('Generated bullet list from text with bullets:', result);
+      return result;
+    }
   }
-
-  if (lines.length === 0) return '';
-  if (lines.length === 1) {
-    lines = lines[0].split(/•\s+/).map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  
+  // Ak text obsahuje čísla s bodkou na začiatku riadkov, vytvor z nich HTML ordered list
+  if (/^\d+\.\s/.test(plainText)) {
+    const items = plainText.split(/\d+\.\s/).filter(item => item.trim().length > 0);
+    if (items.length > 0) {
+      const result = '<ol>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ol>';
+      console.log('Generated ordered list:', result);
+      return result;
+    }
   }
-  if (lines.length === 1) {
-    return lines[0];
+  
+  // Ak text obsahuje oddelené riadky, vytvor z nich HTML bullet list
+  if (plainText.includes('\n')) {
+    const items = plainText.split('\n').filter(item => item.trim().length > 0);
+    if (items.length > 1) {
+      const result = '<ul>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ul>';
+      console.log('Generated bullet list from multiline text:', result);
+      return result;
+    }
   }
-  return '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
+  
+  // Ak text obsahuje stredníky, vytvor z nich HTML bullet list
+  if (plainText.includes(';')) {
+    const items = plainText.split(';').filter(item => item.trim().length > 0);
+    if (items.length > 1) {
+      const result = '<ul>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ul>';
+      console.log('Generated bullet list from semicolon-separated text:', result);
+      return result;
+    }
+  }
+  
+  // Ak nie je možné vytvoriť bullet list, vráť pôvodný text
+  return plainText;
 }
 
 // Helper: Convert HTML bullet list to plain text (one bullet per line)
@@ -570,7 +607,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
           )}
           {/* Footer v šedom pruhu */}
           <div style={{ background: '#f3f3f7', color: '#888', fontSize: 12, textAlign: 'center', borderRadius: 8, padding: 14, margin: '22px 40px 22px 40px', letterSpacing: 0.5, boxShadow: '0 2px 8px #1112' }}>
-            {settings.name} {settings.ico && `| IČO: ${settings.ico}`} {settings.email && `| ${settings.email}`} {settings.web && `| ${settings.web}`}
+            {settings.name} {settings.ico && `| IČO: ${settings.ico}`} {settings.dic && `| DIČ: ${settings.dic}`} {settings.icDph && `| IČ DPH: ${settings.icDph}`}
           </div>
         </div>
       );
@@ -622,12 +659,34 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
             <div style={{ color: '#bbb', fontSize: 36, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
           )}
         </div>
-        <div style={{ textAlign: 'right', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Noto Sans', fontWeight: 400 }}>
-          <span>{settings.email}</span>
-          <span style={{ margin: '0 8px' }}>|</span>
-          <span>{settings.phone}</span>
-          <span style={{ margin: '0 8px' }}>|</span>
-          <span>{settings.web}</span>
+        <div style={{ textAlign: 'right', fontSize: 14, color: '#888', display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'Noto Sans', fontWeight: 400 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>Email:</span>
+            <input 
+              type="text" 
+              value={settings.email || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, email: e.target.value }))}
+              style={{ width: 200, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>Telefón:</span>
+            <input 
+              type="text" 
+              value={settings.phone || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, phone: e.target.value }))}
+              style={{ width: 200, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>Web:</span>
+            <input 
+              type="text" 
+              value={settings.web || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, web: e.target.value }))}
+              style={{ width: 200, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
         </div>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
@@ -821,10 +880,44 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       )}
       {/* Footer v šedom pruhu */}
       <div style={{ background: '#f3f3f7', color: '#888', fontSize: 13, textAlign: 'center', borderRadius: 6, padding: 14, marginTop: 24, letterSpacing: 0.5 }}>
-        {settings.name}
-        {settings.ico && ` | IČO: ${settings.ico}`}
-        {settings.dic && ` | DIČ: ${settings.dic}`}
-        {settings.icDph && ` | IČ DPH: ${settings.icDph}`}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>Názov firmy:</span>
+            <input 
+              type="text" 
+              value={settings.name || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, name: e.target.value }))}
+              style={{ width: 150, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>IČO:</span>
+            <input 
+              type="text" 
+              value={settings.ico || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, ico: e.target.value }))}
+              style={{ width: 100, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>DIČ:</span>
+            <input 
+              type="text" 
+              value={settings.dic || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, dic: e.target.value }))}
+              style={{ width: 100, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>IČ DPH:</span>
+            <input 
+              type="text" 
+              value={settings.icDph || ''} 
+              onChange={(e) => setSettings(prev => ({ ...prev, icDph: e.target.value }))}
+              style={{ width: 100, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4, fontSize: 13 }}
+            />
+          </div>
+        </div>
       </div>
       {/* Tlačidlá Export, Uložiť, Späť */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, marginTop: 32 }}>
@@ -1066,6 +1159,36 @@ function SortableItem({
     return '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
   }
 
+  // Funkcia na čistenie HTML z ReactQuill
+  function cleanQuillHtml(html: string): string {
+    if (!html) return '';
+    
+    console.log('cleanQuillHtml input:', html);
+    
+    // Odstráň <p> tagy okolo <ul>
+    let cleanedHtml = html
+      .replace(/<p>\s*<ul/g, '<ul')
+      .replace(/<\/ul>\s*<\/p>/g, '</ul>')
+      // Zachovaj vnorené <ul> a <li>
+      .replace(/<li[^>]*><p[^>]*>([\s\S]*?)<\/p><ul/g, '<li>$1<ul')
+      // Odstráň atribúty z <ul> a <li> tagov ale zachovaj štruktúru
+      .replace(/<(ul|li)[^>]*>/gi, (match) => {
+        if (match.startsWith('<ul')) return '<ul>';
+        if (match.startsWith('<li')) return '<li>';
+        return match;
+      })
+      // Odstráň prázdne <p> tagy
+      .replace(/<p>\s*<\/p>/gi, '')
+      // Odstráň <br> tagy
+      .replace(/<br\s*\/?>/gi, '')
+      // Vyčisti whitespace
+      .replace(/>\s+</g, '><')
+      .trim();
+    
+    console.log('cleanQuillHtml output:', cleanedHtml);
+    return cleanedHtml;
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -1097,21 +1220,34 @@ function SortableItem({
               <div style={{ marginTop: 4 }}>
                 <ReactQuill
                   value={descDraft}
-                  onChange={setDescDraft}
+                  onChange={(value) => {
+                    console.log("ReactQuill onChange:", value);
+                    setDescDraft(value);
+                  }}
                   modules={{
                     toolbar: [
                       ['bold', 'italic', 'underline'],
                       [{ 'list': 'bullet' }],
                       [{ 'indent': '-1' }, { 'indent': '+1' }], // allow nested bullets
                       ['clean']
-                    ]
+                    ],
+                    clipboard: {
+                      matchVisual: false // Prevents unwanted HTML tags
+                    }
                   }}
+                  formats={[
+                    'bold', 'italic', 'underline',
+                    'list', 'bullet', 'indent'
+                  ]}
                   style={{ minHeight: 100, maxHeight: 220, overflowY: 'auto', background: 'transparent' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
                   <button
                     onClick={() => {
-                      setItems(items => items.map((row, j) => j === index ? { ...row, desc: descDraft } : row));
+                      // Ensure proper bullet list format
+                      const cleanedDesc = cleanQuillHtml(descDraft);
+                      
+                      setItems(items => items.map((row, j) => j === index ? { ...row, desc: cleanedDesc } : row));
                       setIsEditingDesc(false);
                     }}
                     style={{
@@ -1642,6 +1778,23 @@ function App() {
         }
         .ql-editor li li {
           list-style-type: circle !important;
+        }
+        
+        /* Dodatočné štýly pre bullet listy */
+        .pdf-bullets {
+          font-family: 'Noto Sans', sans-serif !important;
+        }
+        .pdf-bullets ul {
+          margin-top: 4px !important;
+          margin-bottom: 4px !important;
+        }
+        .pdf-bullets li {
+          line-height: 1.4 !important;
+          margin-bottom: 2px !important;
+        }
+        .ql-container {
+          font-family: 'Noto Sans', sans-serif !important;
+          font-size: 13px !important;
         }
       `}</style>
     </div>
