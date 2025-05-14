@@ -3,6 +3,11 @@ import { Document, Page, Text, View, StyleSheet, Font, Image } from '@react-pdf/
 import type { OfferItem, OfferRow, CompanySettings } from '../types';
 import { format } from 'date-fns';
 
+// Helper function for currency formatting
+function formatCurrency(value: number, currency: string = '€') {
+  return value.toLocaleString('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+}
+
 // Register Roboto font for diacritics přímo z Google Fonts API
 Font.register({
   family: 'Roboto',
@@ -20,7 +25,10 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    paddingTop: 80,
+    paddingLeft: 40,
+    paddingRight: 40,
+    paddingBottom: 40,
     fontSize: 12,
     fontFamily: 'Roboto',
   },
@@ -34,7 +42,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 24,
     fontFamily: 'Roboto',
   },
   title: {
@@ -67,7 +75,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
   },
   tableHeader: {
-    backgroundColor: '#eee',
+    backgroundColor: '#fafdff',
     fontWeight: 'bold',
     fontFamily: 'Roboto',
   },
@@ -97,10 +105,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
   },
   footer: {
-    position: 'absolute',
-    bottom: 40,
-    left: 40,
-    right: 40,
     fontSize: 10,
     color: '#666',
     textAlign: 'center',
@@ -108,7 +112,7 @@ const styles = StyleSheet.create({
   },
   sectionRow: {
     flexDirection: 'row',
-    backgroundColor: '#f4f4f4',
+    backgroundColor: '#fafdff',
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
     borderBottomStyle: 'solid',
@@ -190,8 +194,10 @@ export function OfferPDFDocument({ offer, settings }: { offer: OfferItem, settin
   }
 
   const subtotal = offer.items?.reduce((sum, i) => i.type === 'item' ? sum + i.qty * i.price : sum, 0) ?? 0;
-  const vat = offer.vatEnabled ? subtotal * (offer.vatRate ?? 0) / 100 : 0;
-  const total = subtotal + vat;
+  const discountAmount = subtotal * (offer.discount ?? 0) / 100;
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const vat = offer.vatEnabled ? subtotalAfterDiscount * (offer.vatRate ?? 0) / 100 : 0;
+  const total = subtotalAfterDiscount + vat;
   const today = format(new Date(), 'd. M. yyyy');
 
   // Helper for logo
@@ -299,27 +305,47 @@ export function OfferPDFDocument({ offer, settings }: { offer: OfferItem, settin
           })}
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <View style={{ marginRight: 32, textAlign: 'right' }}>
-            <Text style={{ fontFamily: 'Roboto', fontWeight: 'bold' }}>Medzisúčet:</Text>
-            {offer.vatEnabled && <Text style={{ fontFamily: 'Roboto', fontWeight: 'bold' }}>DPH ({offer.vatRate}%):</Text>}
-          </View>
-          <View style={{ minWidth: 120, textAlign: 'right' }}>
-            <Text style={{ fontFamily: 'Roboto', fontWeight: 'bold' }}>{subtotal.toFixed(2)} {settings.currency || '€'}</Text>
-            {offer.vatEnabled && <Text style={{ fontFamily: 'Roboto', fontWeight: 'bold' }}>{vat.toFixed(2)} {settings.currency || '€'}</Text>}
+        {/* Summary section */}
+        <View style={{ marginTop: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16, fontSize: 12 }}>
+            <View style={{ textAlign: 'right' }}>
+              <Text style={{ color: '#666', marginBottom: 4 }}>Medzisúčet:</Text>
+              {offer.discount > 0 && <Text style={{ color: '#666', marginBottom: 4 }}>Zľava {offer.discount}%:</Text>}
+              {offer.vatEnabled && <Text style={{ color: '#666', marginBottom: 4 }}>DPH {offer.vatRate}%:</Text>}
+              <Text style={{ fontWeight: 'bold', color: '#2346a0', fontSize: 16, marginTop: 8 }}>Spolu:</Text>
+            </View>
+            <View style={{ textAlign: 'right', minWidth: 100 }}>
+              <Text style={{ color: '#666', marginBottom: 4 }}>{formatCurrency(subtotal)}</Text>
+              {offer.discount > 0 && <Text style={{ color: '#666', marginBottom: 4 }}>-{formatCurrency(discountAmount)}</Text>}
+              {offer.vatEnabled && <Text style={{ color: '#666', marginBottom: 4 }}>{formatCurrency(vat)}</Text>}
+              <Text style={{ fontWeight: 'bold', color: '#2346a0', fontSize: 16, marginTop: 8 }}>{formatCurrency(total)}</Text>
+            </View>
           </View>
         </View>
 
         <View style={styles.sumBox}>
-          <Text style={{ fontFamily: 'Roboto', fontWeight: 'bold' }}>{total.toFixed(2)} {settings.currency || '€'}</Text>
+          <View style={{ flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+            {offer.discount > 0 && (
+              <Text style={{ textDecoration: 'line-through', color: 'red', fontSize: 16, fontWeight: 'bold', marginBottom: 2 }}>
+                {subtotal.toFixed(2)} {settings.currency || '€'}
+              </Text>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#fff' }}>{total.toFixed(2)} {settings.currency || '€'}</Text>
+              {offer.discount > 0 && (
+                <View style={{ backgroundColor: '#c00', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 2, marginLeft: 8, minWidth: 40, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>-{offer.discount}%</Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
 
         {settings.pdfNote && <Text style={{ ...styles.note, fontFamily: 'Roboto', fontWeight: 'normal' }}>{settings.pdfNote}</Text>}
         {offer.note && <Text style={{ ...styles.note, fontFamily: 'Roboto', fontWeight: 'normal' }}>{offer.note}</Text>}
         {offer.tableNote && <Text style={{ ...styles.note, fontFamily: 'Roboto', fontWeight: 'normal' }}>{offer.tableNote}</Text>}
-
         <View style={styles.footer}>
-          <Text style={{ fontFamily: 'Roboto', fontWeight: 'normal' }}>{settings.name} | IČO: {settings.ico}</Text>
+          <Text style={{ fontFamily: 'Roboto', fontWeight: 'normal' }}>{settings.name} | IČO: {settings.ico} | {settings.email} | {settings.web}</Text>
           <Text style={{ fontFamily: 'Roboto', fontWeight: 'normal' }}>Vytvorené: {today}</Text>
         </View>
       </Page>

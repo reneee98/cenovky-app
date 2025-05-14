@@ -28,6 +28,71 @@ import { Notification } from './components/Notification';
 import type { OfferItem, OfferRow, CompanySettings, ItemRow, SectionRow, SubtotalRow, ClientDetails } from './types';
 import { FaTrash, FaRegClone, FaChevronRight, FaRegFileAlt } from 'react-icons/fa';
 import { FaUser } from 'react-icons/fa';
+import { exportOfferPdfWithPdfmake } from './utils/pdfmakeExport';
+import { createRoot } from 'react-dom/client';
+
+
+// --- Funkcia na extrakciu bodov a generovanie čistého zoznamu ---
+function extractBullets(html: string): string {
+  if (!html) return '';
+  
+  // Odstráň všetky div, p, span, class, style, data-*
+  html = html
+    .replace(/<(\/)?(div|p|span)[^>]*>/gi, '')
+    .replace(/ class="[^"]*"/gi, '')
+    .replace(/ style="[^"]*"/gi, '')
+    .replace(/ data-[^=]+="[^"]*"/gi, '')
+    .replace(/<br\s*\/?>(\s*)?/gi, ' ')
+    .replace(/\n/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Ak je v texte <ul>, zachovaj ho ako je
+  if (/<ul[\s>]/.test(html)) {
+    // Vyčisti HTML, ale zachovaj <ul> a <li> štruktúru
+    html = html
+      .replace(/<(?!\/?ul|\/?li)[^>]+>/g, '') // Odstráň všetky tagy okrem ul a li
+      .replace(/>\s+</g, '><') // Odstráň whitespace medzi tagmi
+      .trim();
+    
+    return html;
+  }
+
+  // Rozdel podľa bodiek, nových riadkov alebo stredníka
+  let lines: string[] = [];
+  if (html.includes('• ')) {
+    lines = html.split(/•\s+/).map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  } else if (html.includes(';')) {
+    lines = html.split(';').map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  } else {
+    lines = html.split(/\s+/).map(l => l.trim()).filter(Boolean);
+  }
+
+  if (lines.length === 0) return '';
+  if (lines.length === 1) {
+    lines = lines[0].split(/•\s+/).map(l => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  }
+  if (lines.length === 1) {
+    return lines[0];
+  }
+  return '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
+}
+
+// Helper: Convert HTML bullet list to plain text (one bullet per line)
+function bulletsHtmlToText(html: string): string {
+  const matches = Array.from((html || '').matchAll(/<li[^>]*>(.*?)<\/li>/gi));
+  if (matches.length) {
+    return matches.map(m => m[1].replace(/<[^>]+>/g, '').trim()).join('\n');
+  }
+  // fallback: strip all tags
+  return (html || '').replace(/<[^>]+>/g, '').trim();
+}
+
+function formatCurrency(value: number, currency: string = '€'): string {
+  return value
+    .toLocaleString('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+}
 
 // Komponent pre zoznam ponúk
 function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
@@ -120,7 +185,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
 }
 
 // Komponent pre formulár ponuky (rozšírený)
-function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: () => void, onSave: (offer: OfferItem) => void, onAutosave: (offer: OfferItem) => void, initial?: OfferItem, onNotify: (msg: string, type: 'success' | 'error' | 'info') => void }) {
+function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, setSettings }: { onBack: () => void, onSave: (offer: OfferItem) => void, onAutosave: (offer: OfferItem) => void, initial?: OfferItem, onNotify: (msg: string, type: 'success' | 'error' | 'info') => void, settings: CompanySettings, setSettings: React.Dispatch<React.SetStateAction<CompanySettings>> }) {
   const [name, setName] = useState(initial?.name || '');
   const [date, setDate] = useState(initial?.date || '');
   const [client, setClient] = useState(initial?.client || '');
@@ -129,6 +194,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
   const [items, setItems] = useState<OfferRow[]>(initial?.items || []);
   const [vatEnabled, setVatEnabled] = useState(initial?.vatEnabled ?? true);
   const [vatRate, setVatRate] = useState(initial?.vatRate ?? 20);
+  const [discount, setDiscount] = useState(initial?.discount ?? 0);
   const [rowType, setRowType] = useState<'item' | 'section' | 'subtotal'>('item');
   const [tableNote, setTableNote] = useState(initial?.tableNote || '');
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -149,23 +215,6 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
   const [addType, setAddType] = useState<'item' | 'section' | 'subtotal' | null>(null);
 
   // Načítanie nastavení firmy
-  const [settings, setSettings] = useState<CompanySettings>(() => {
-    try {
-      const data = localStorage.getItem('companySettings');
-      const parsed = data ? JSON.parse(data) : null;
-      return parsed ? { ...parsed, dic: parsed.dic || '', icDph: parsed.icDph || '' } : {
-        name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
-      };
-    } catch {
-      return { name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
-    }
-  });
-
-  const [address, setAddress] = useState(settings.address || '');
-  const [zip, setZip] = useState(settings.zip || '');
-  const [city, setCity] = useState(settings.city || '');
-  const [country, setCountry] = useState(settings.country || 'Slovensko');
-
   const [showDetails, setShowDetails] = useState(initial?.showDetails ?? true);
 
   function handleAddRow(e: React.FormEvent) {
@@ -200,8 +249,10 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
 
   // Výpočty
   const subtotal = items.reduce((sum, i) => i.type === 'item' ? sum + i.qty * i.price : sum, 0);
-  const vat = vatEnabled ? subtotal * (vatRate / 100) : 0;
-  const total = subtotal + vat;
+  const discountAmount = subtotal * (discount / 100);
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const vat = vatEnabled ? subtotalAfterDiscount * (vatRate / 100) : 0;
+  const total = subtotalAfterDiscount + vat;
 
   // Autosave při změně položek nebo základních údajů
   useEffect(() => {
@@ -219,9 +270,10 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
       vatRate,
       tableNote,
       showDetails,
+      discount
     });
     onNotify('Všetky zmeny boli automaticky uložené', 'success');
-  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails]);
+  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails, discount]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -248,6 +300,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
       vatRate,
       tableNote,
       showDetails,
+      discount
     });
     setSuccess(true);
     setTimeout(() => onBack(), 700);
@@ -317,107 +370,240 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
   };
 
   async function handleExportHighResPDF() {
-    // Priprav logo na export (ak SVG, konvertuj na PNG cez canvg)
-    let exportLogo = settings.logo;
-    if (settings.logo && settings.logo.startsWith('data:image/svg')) {
-      // Dynamicky importuj canvg
-      const { Canvg } = await import('canvg');
-      let svgData = '';
-      if (settings.logo.startsWith('data:image/svg+xml;base64,')) {
-        svgData = atob(settings.logo.split(',')[1]);
-      } else if (
-        settings.logo.startsWith('data:image/svg+xml;utf8,') ||
-        settings.logo.startsWith('data:image/svg+xml,')
-      ) {
-        svgData = decodeURIComponent(settings.logo.split(',')[1]);
-      } else {
-        svgData = settings.logo;
-      }
-      // Odstráň všetko pred <svg
-      const svgStart = svgData.indexOf('<svg');
-      if (svgStart !== -1) {
-        svgData = svgData.slice(svgStart);
-      }
-      // Nahradím všetky ' za " pre validné XML
-      svgData = svgData.replace(/'/g, '"');
-      // Kompletné čistenie SVG pre canvg
-      svgData = svgData
-        .replace(/class=["']cls-1["']/g, 'fill-rule="evenodd"')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
-        .replace(/<defs>[\s\S]*?<\/defs>/g, '')
-        .replace(/<title>[\s\S]*?<\/title>/g, '')
-        .replace(/class=["'][^"']*["']/g, '');
-      // Odstráň všetky atribúty z <svg ...> okrem xmlns a viewBox
-      svgData = svgData.replace(
-        /<svg[^>]*xmlns=["'][^"']*["'][^>]*viewBox=["'][^"']*["'][^>]*>/,
-        match => {
-          const xmlns = match.match(/xmlns=["'][^"']*["']/)?.[0] || '';
-          const viewBox = match.match(/viewBox=["'][^"']*["']/)?.[0] || '';
-          return `<svg ${xmlns} ${viewBox}>`;
+    try {
+      let exportLogo = settings.logo;
+      // Robustné spracovanie SVG loga
+      if (settings.logo && settings.logo.startsWith('data:image/svg')) {
+        let svgData = '';
+        if (settings.logo.startsWith('data:image/svg+xml;base64,')) {
+          svgData = atob(settings.logo.split(',')[1]);
+        } else if (settings.logo.startsWith('data:image/svg+xml;utf8,')) {
+          svgData = settings.logo.split(',')[1];
+        } else {
+          svgData = settings.logo;
         }
-      );
-      // Odstráň id, data-name a iné neštandardné atribúty z <svg> a <path>
-      svgData = svgData
-        .replace(/ id=["'][^"']*["']/g, '')
-        .replace(/ data-name=["'][^"']*["']/g, '');
-      console.log('SVG pre canvg FINAL:', svgData.slice(0, 300));
-      const canvas = document.createElement('canvas');
-      canvas.width = 800;
-      canvas.height = 300;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const v = await Canvg.fromString(ctx, svgData);
-        await v.render();
-        exportLogo = canvas.toDataURL('image/png');
+        // 1. Čistenie SVG
+        svgData = svgData.replace(/^ FF/, ''); // BOM
+        svgData = svgData.replace(/<!--[\s\S]*?-->/g, ''); // komentáre
+        svgData = svgData.replace(/<\?xml[^>]*>/g, ''); // XML deklarácia
+        svgData = svgData.replace(/^[^<]*<svg/, '<svg'); // whitespace pred <svg
+        svgData = svgData.replace(/([a-zA-Z0-9\-]+)='([^']*)'/g, '$1="$2"');
+        svgData = svgData.replace(/&[a-zA-Z]+;/g, ''); // entity
+        svgData = svgData
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
+          .replace(/<defs>[\s\S]*?<\/defs>/g, '')
+          .replace(/<title>[\s\S]*?<\/title>/g, '');
+        // 2. Validácia cez DOMParser
+        let validSVG = true;
+        try {
+          const parser = new window.DOMParser();
+          const doc = parser.parseFromString(svgData, 'image/svg+xml');
+          const parseError = doc.querySelector('parsererror');
+          if (parseError) {
+            validSVG = false;
+            alert('Vaše SVG logo obsahuje chybu v atribútoch alebo zápise. Skúste ho exportovať z grafického editora znova, alebo použite PNG.\n\nChyba: ' + parseError.textContent);
+          } else {
+            svgData = new XMLSerializer().serializeToString(doc.documentElement);
+          }
+        } catch (e) {
+          validSVG = false;
+          alert('Vaše SVG logo nie je validné XML. Skúste ho exportovať z grafického editora znova, alebo použite PNG.');
+        }
+        // 3. Konverzia cez canvg
+        if (validSVG) {
+          try {
+            const canvgModule = await import('canvg');
+            const Canvg = canvgModule.Canvg;
+            const canvas = document.createElement('canvas');
+            canvas.width = 800;
+            canvas.height = 300;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const v = await Canvg.fromString(ctx, svgData);
+              await v.render();
+              exportLogo = canvas.toDataURL('image/png');
+            }
+          } catch (svgErr) {
+            alert('SVG logo sa nepodarilo konvertovať do PNG pre PDF export. Skúste SVG exportovať z grafického editora znova, alebo použite PNG.\n\nChyba: ' + svgErr);
+            exportLogo = settings.logo; // fallback na SVG DataURL
+          }
+        } else {
+          exportLogo = settings.logo; // fallback na SVG DataURL
+        }
       }
-    }
-    // Vytvor dočasný kontajner mimo obrazovky
-    const tempDiv = document.createElement('div');
-    tempDiv.style.position = 'fixed';
-    tempDiv.style.left = '-9999px';
-    tempDiv.style.top = '0';
-    tempDiv.style.zIndex = '-1';
-    document.body.appendChild(tempDiv);
+      // Pokračuje pôvodný kód: vytvorenie tempDiv, render, html2pdf
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '0';
+      tempDiv.style.zIndex = '-1';
+      document.body.appendChild(tempDiv);
 
-    // Vyrenderuj OfferExportPreview do tempDiv
-    import('react-dom').then(ReactDOM => {
-      ReactDOM.render(
-        <OfferExportPreview
-          name={name}
-          date={date}
-          client={client}
-          clientDetails={clientDetails}
-          note={note}
-          items={items}
-          vatEnabled={vatEnabled}
-          vatRate={vatRate}
-          total={total}
-          tableNote={tableNote}
-          settings={{ ...settings, logo: exportLogo }}
-          showSupplierDetails={showDetails}
-          showClientDetails={showDetails}
-        />,
-        tempDiv,
-        () => {
-          import('html2pdf.js').then(html2pdf => {
-            html2pdf.default()
-              .set({
-                margin: 0,
-                filename: 'ponuka-kvalitna.pdf',
-                image: { type: 'jpeg', quality: 1 },
-                html2canvas: { scale: 4, useCORS: true },
-                jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
-              })
-              .from(tempDiv.firstChild)
-              .save()
-              .then(() => {
-                ReactDOM.unmountComponentAtNode(tempDiv);
-                document.body.removeChild(tempDiv);
-              });
-          });
-        }
+      // Calculate totals
+      const subtotal = items.reduce((sum, i) => i.type === 'item' ? sum + (i.qty ?? 0) * (i.price ?? 0) : sum, 0);
+      const discountAmount = subtotal * (discount / 100);
+      const subtotalAfterDiscount = subtotal - discountAmount;
+      const vat = vatEnabled ? subtotalAfterDiscount * (vatRate / 100) : 0;
+      const total = subtotalAfterDiscount + vat;
+
+      // Use createRoot for React 18 compatibility
+      const root = createRoot(tempDiv);
+      // Získaj dnešný dátum vo formáte DD.MM.YYYY
+      const today = new Date();
+      const formattedDate = today.getDate().toString().padStart(2, '0') + '.' + (today.getMonth() + 1).toString().padStart(2, '0') + '.' + today.getFullYear();
+      root.render(
+        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', maxWidth: 820, margin: '0 auto', padding: 0, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
+          {/* LOGO a HLAVIČKA */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '40px 40px 0 40px' }}>
+            <div style={{ minHeight: 48, minWidth: 140, display: 'flex', alignItems: 'center' }}>
+              {exportLogo && exportLogo.length > 0 ? (
+                <img src={exportLogo} alt="Logo" style={{ maxHeight: 48, maxWidth: 140, objectFit: 'contain' }} />
+              ) : (
+                <div style={{ color: '#bbb', fontSize: 28, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', fontSize: 13, color: '#111', fontWeight: 700, lineHeight: 1.3 }}>
+              <div style={{ color: '#111', fontWeight: 700 }}>{settings.email}</div>
+              <div style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>{settings.phone} | {settings.web}</div>
+            </div>
+          </div>
+          {/* Názov ponuky a popis */}
+          <div style={{ padding: '0 40px', marginTop: 18 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#111', marginBottom: 4, letterSpacing: -0.5 }}>Cenová ponuka</div>
+            <div style={{ fontSize: 15, color: '#444', marginBottom: 2 }}>{name || 'Cenová ponuka na ...'}</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>Dátum: {formattedDate}</div>
+          </div>
+          {/* Tabuľka položiek */}
+          <div style={{ margin: '24px 0 0 0', padding: '0 40px' }}>
+            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', border: '1.5px solid #e3e8f7', boxShadow: '0 2px 12px #1112' }}>
+              <div style={{ display: 'flex', fontWeight: 800, fontSize: 13, background: '#222', color: '#fff', padding: '12px 0 12px 0', borderBottom: '2px solid #e3e8f7', letterSpacing: 0.2 }}>
+                <div style={{ flex: 3, padding: '0 12px' }}>Názov položky / Popis</div>
+                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Počet</div>
+                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Cena (€)</div>
+                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Medzisúčet (€)</div>
+              </div>
+              {items.map((item, index) => {
+                const isSection = item.type === 'section';
+                const isSubtotal = item.type === 'subtotal';
+                let subtotalValue = 0;
+                if (isSubtotal) {
+                  let lastSectionIdx = -1;
+                  for (let j = index - 1; j >= 0; j--) {
+                    if (items[j].type === 'section') {
+                      lastSectionIdx = j;
+                      break;
+                    }
+                  }
+                  for (let j = lastSectionIdx + 1; j < index; j++) {
+                    const row = items[j];
+                    if (row.type === 'item') {
+                      subtotalValue += Number(row.qty ?? 0) * Number(row.price ?? 0);
+                    }
+                  }
+                }
+                if (isSection) {
+                  return (
+                    <div key={item.id} style={{ background: '#f5f5f5', fontWeight: 800, color: '#111', fontSize: 15, padding: '12px 0 12px 18px', borderLeft: '6px solid #222', margin: '0', borderRadius: 0, letterSpacing: 0.5, display: 'flex', alignItems: 'center' }}>
+                      {item.title}
+                    </div>
+                  );
+                }
+                if (isSubtotal) {
+                  return (
+                    <div key={item.id} style={{ display: 'flex', background: '#ededed', fontWeight: 700, color: '#111', fontSize: 13, padding: '8px 0', borderTop: '1.5px solid #e3e8f7' }}>
+                      <div style={{ flex: 3, padding: '0 12px', textAlign: 'right', fontWeight: 700 }}>Cena spolu:</div>
+                      <div style={{ flex: 1 }}></div>
+                      <div style={{ flex: 1 }}></div>
+                      <div style={{ flex: 1, textAlign: 'right', padding: '0 12px', fontWeight: 900 }}>{formatCurrency(subtotalValue, '€')}</div>
+                    </div>
+                  );
+                }
+                // Položka
+                return (
+                  <div key={item.id} style={{ display: 'flex', fontSize: 12, background: '#fff', borderTop: '1px solid #e3e8f7', minHeight: 22 }}>
+                    <div style={{ flex: 3, padding: '6px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <div style={{ fontWeight: 700, color: '#111', fontSize: 13 }}>{item.title}</div>
+                      {item.type === 'item' && item.desc && (
+                        <div className="pdf-bullets" style={{ color: '#888', fontSize: 11, marginTop: 1 }} dangerouslySetInnerHTML={{ __html: extractBullets(item.desc) }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#222', fontWeight: 500 }}>{item.qty}</div>
+                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#222', fontWeight: 500 }}>{item.price !== undefined ? formatCurrency(item.price, '€') : ''}</div>
+                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#111', fontWeight: 900 }}>{item.type === 'item' ? formatCurrency((item.qty ?? 0) * (item.price ?? 0), '€') : ''}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* SUMÁRNY ČIERNY BOX */}
+          <div style={{ background: '#111', color: '#fff', borderRadius: 12, margin: '24px 40px 12px 40px', boxShadow: '0 2px 12px #1115', padding: '18px 18px', display: 'flex', flexDirection: 'row', alignItems: 'center', fontFamily: 'Noto Sans' }}>
+            {/* Ľavá strana: nadpis */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{vatEnabled ? 'Celková cena s DPH' : 'Celková cena'}</span>
+            </div>
+            {/* Pravá strana: ceny a badge */}
+            <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 5 }}>
+              {(discount > 0 || vatEnabled) && (
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  {discount > 0 && (
+                    <span style={{ textDecoration: 'line-through', color: '#fff', opacity: 0.7, fontWeight: 700, fontSize: 15 }}>{formatCurrency(vatEnabled ? subtotal + vat : subtotal)}</span>
+                  )}
+                  {discount > 0 && (
+                    <span style={{ background: '#c00', color: '#fff', fontWeight: 700, fontSize: 12, borderRadius: 5, padding: '3px 10px' }}>Zľava {discount}%</span>
+                  )}
+                </div>
+              )}
+              <span style={{ fontSize: 24, fontWeight: 900, color: '#fff', letterSpacing: -1, marginBottom: 4 }}>{formatCurrency(total)}</span>
+              {vatEnabled ? (
+                <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH: {formatCurrency(subtotalAfterDiscount)}</span>
+              ) : (
+                <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH</span>
+              )}
+            </div>
+          </div>
+          {/* Poznámky a podmienky */}
+          {(settings.pdfNote || tableNote) && (
+            <div style={{ color: '#444', fontSize: 12, margin: '22px 40px 0 40px', lineHeight: 1.5 }}>
+              {settings.pdfNote && <div style={{ marginBottom: 4 }}>{settings.pdfNote}</div>}
+              {tableNote && <div>{tableNote}</div>}
+            </div>
+          )}
+          {/* Footer v šedom pruhu */}
+          <div style={{ background: '#f3f3f7', color: '#888', fontSize: 12, textAlign: 'center', borderRadius: 8, padding: 14, margin: '22px 40px 22px 40px', letterSpacing: 0.5, boxShadow: '0 2px 8px #1112' }}>
+            {settings.name} {settings.ico && `| IČO: ${settings.ico}`} {settings.email && `| ${settings.email}`} {settings.web && `| ${settings.web}`}
+          </div>
+        </div>
       );
-    });
+      import('html2pdf.js').then(html2pdf => {
+        try {
+          html2pdf.default()
+            .set({
+              margin: 0,
+              filename: 'ponuka-kvalitna.pdf',
+              image: { type: 'jpeg', quality: 1 },
+              html2canvas: { scale: 4, useCORS: true },
+              jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+            })
+            .from(tempDiv.firstChild)
+            .save()
+            .then(() => {
+              root.unmount();
+              document.body.removeChild(tempDiv);
+            })
+            .catch((pdfErr: Error) => {
+              root.unmount();
+              document.body.removeChild(tempDiv);
+              alert('Chyba pri exporte PDF: ' + pdfErr);
+            });
+        } catch (html2pdfErr) {
+          root.unmount();
+          document.body.removeChild(tempDiv);
+          alert('Chyba pri generovaní PDF: ' + html2pdfErr);
+        }
+      });
+    } catch (err) {
+      alert('Chyba pri exporte PDF: ' + err);
+    }
   }
 
   // Live preview editor - hlavný wrapper
@@ -425,30 +611,23 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
     <div className="offer-card offer-live-preview">
       {/* LOGO a HLAVIČKA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ minHeight: 60, minWidth: 200, display: 'flex', alignItems: 'center' }}>
-          {settings.logo && settings.logo.startsWith('data:') ? (
-            <img 
-              src={settings.logo} 
-              alt="Logo" 
-              style={{ maxHeight: 60, maxWidth: 200, objectFit: 'contain' }} 
+        <div style={{ minHeight: 60, minWidth: 180, display: 'flex', alignItems: 'center' }}>
+          {settings.logo && settings.logo.length > 0 ? (
+            <img
+              src={settings.logo}
+              alt="Logo"
+              style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001' }}
             />
           ) : (
-            <div
-              style={{ color: '#222', fontSize: 40, fontWeight: 700, cursor: 'pointer', borderBottom: '1px solid rgba(0,0,0,0.03)' }}
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={e => setSettings(s => ({ ...s, logo: e.currentTarget.textContent || '' }))}
-            >
-              {settings.logo || 'LOGO'}
-            </div>
+            <div style={{ color: '#bbb', fontSize: 36, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
           )}
         </div>
-        <div style={{ textAlign: 'right', fontSize: 16, color: '#888' }}>
-          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, phone: e.currentTarget.textContent || '' }))}>{settings.phone || '+421 900 000 000'}</span>
+        <div style={{ textAlign: 'right', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Noto Sans', fontWeight: 400 }}>
+          <span>{settings.email}</span>
           <span style={{ margin: '0 8px' }}>|</span>
-          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, email: e.currentTarget.textContent || '' }))}>{settings.email || 'info@email.sk'}</span>
+          <span>{settings.phone}</span>
           <span style={{ margin: '0 8px' }}>|</span>
-          <span style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setSettings(s => ({ ...s, web: e.currentTarget.textContent || '' }))}>{settings.web || 'www.web.sk'}</span>
+          <span>{settings.web}</span>
         </div>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
@@ -571,530 +750,87 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify }: { onBack: 
       </div>
       {/* DPH a sadzba - iPhone style switch */}
       <div style={{ margin: '32px 0 0 0', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
-          <span style={{ fontSize: 15 }}>S DPH</span>
-          <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20 }}>
-            <input type="checkbox" checked={vatEnabled} onChange={e => setVatEnabled(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-            <span style={{
-              position: 'absolute',
-              cursor: 'pointer',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: vatEnabled ? '#2346a0' : '#ccc',
-              borderRadius: 20,
-              transition: 'background 0.2s',
-            }}></span>
-            <span style={{
-              position: 'absolute',
-              left: vatEnabled ? 18 : 2,
-              top: 2,
-              width: 16,
-              height: 16,
-              background: '#fff',
-              borderRadius: '50%',
-              boxShadow: '0 1px 4px #0002',
-              transition: 'left 0.2s',
-            }}></span>
-          </span>
-        </label>
-        {vatEnabled && (
-          <span>
-            sadzba: <input
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DPH:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={vatEnabled}
+              onChange={e => setVatEnabled(e.target.checked)}
+              style={{ margin: 0 }}
+            />
+            <input
               type="number"
               min={0}
               max={100}
               value={vatRate}
               onChange={e => setVatRate(Number(e.target.value))}
-              style={{ width: 50, padding: 4, border: '1px solid #ddd', borderRadius: 6 }}
-            /> %
-          </span>
-        )}
-      </div>
-      {/* SUMÁR */}
-      <div className="sum-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <div style={{ textAlign: 'left', fontWeight: 500, fontSize: 18, lineHeight: 1.2 }}>
-          Výsledná cena spolu:
-        </div>
-        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-          <span style={{ fontSize: 32, fontWeight: 700, color: '#fff' }}>{total.toFixed(2)} €</span>
-          {vatEnabled && (
-            <span style={{ fontSize: 16, fontWeight: 400, marginTop: 4, color: '#ccc' }}>
-              vrátane DPH ({vatRate}%)
-            </span>
-          )}
-        </div>
-      </div>
-      {/* POZNÁMKA POD TABUĽKOU */}
-      <div className="table-note" style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setTableNote(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: tableNote || 'Doplňujúce informácie, podmienky, atď.' }} />
-      {/* TLAČIDLÁ */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 32, justifyContent: 'flex-end' }}>
-        <button
-          type="submit"
-          disabled={!name.trim() || items.length === 0}
-          style={{
-            padding: '14px 32px',
-            background: '#2346a0',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 18,
-            fontWeight: 700,
-            opacity: (!name.trim() || items.length === 0) ? 0.5 : 1
-          }}
-        >
-          Uložiť ponuku
-        </button>
-        <button
-          type="button"
-          onClick={handleExportHighResPDF}
-          style={{
-            padding: '14px 32px',
-            background: '#2346a0',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            fontSize: 18,
-            fontWeight: 700,
-            cursor: 'pointer',
-            marginLeft: 8
-          }}
-        >
-          Exportovať PDF (kvalitný screenshot)
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            padding: '14px 32px',
-            background: '#666',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 18,
-            fontWeight: 700
-          }}
-        >
-          Späť
-        </button>
-      </div>
-      <ClientDetailsModal
-        isOpen={isClientModalOpen}
-        onClose={() => setIsClientModalOpen(false)}
-        clientDetails={clientDetails}
-        onSave={setClientDetails}
-      />
-    </div>
-  );
-}
-
-function OfferDetail({ offer, onBack }: { offer: OfferItem, onBack: () => void }) {
-  // Načítanie nastavení firmy z localStorage
-  let settings: CompanySettings = { name: '', ico: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: '' };
-  try {
-    const data = localStorage.getItem('companySettings');
-    if (data) settings = JSON.parse(data);
-  } catch {}
-
-  return (
-    <div className="section">
-      <div className="button-row" style={{marginTop: 24, marginBottom: 24}}>
-        <button type="button" onClick={onBack}>Späť</button>
-      </div>
-    </div>
-  );
-}
-
-function SettingsForm({ settings, onSave, onBack }: {
-  settings: CompanySettings,
-  onSave: (s: CompanySettings) => void,
-  onBack: () => void
-}) {
-  const [name, setName] = useState(settings.name);
-  const [ico, setIco] = useState(settings.ico);
-  const [dic, setDic] = useState(settings.dic || '');
-  const [icDph, setIcDph] = useState(settings.icDph || '');
-  const [email, setEmail] = useState(settings.email);
-  const [phone, setPhone] = useState(settings.phone || '');
-  const [web, setWeb] = useState(settings.web || '');
-  const [logo, setLogo] = useState(settings.logo);
-  const [defaultRate, setDefaultRate] = useState(settings.defaultRate);
-  const [currency, setCurrency] = useState(settings.currency);
-  const [pdfNote, setPdfNote] = useState(settings.pdfNote || '');
-  const [address, setAddress] = useState(settings.address || '');
-  const [zip, setZip] = useState(settings.zip || '');
-  const [city, setCity] = useState(settings.city || '');
-  const [country, setCountry] = useState(settings.country || 'Slovensko');
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    onSave({ name, ico, dic, icDph, address, zip, city, country, email, phone, web, logo, defaultRate, currency, pdfNote });
-    onBack();
-  }
-
-  return (
-    <div className="offer-card offer-live-preview" style={{ maxWidth: 600, margin: '40px auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
-      <h2 style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', marginBottom: 28, letterSpacing: -0.5 }}>Nastavenia firmy / freelancera</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 10 }}>Firemné údaje</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Názov:<br/>
-                <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČO:<br/>
-                <input value={ico} onChange={e => setIco(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DIČ:<br/>
-                <input value={dic} onChange={e => setDic(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČ DPH:<br/>
-                <input value={icDph} onChange={e => setIcDph(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Adresa:<br/>
-                <input value={address} onChange={e => setAddress(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div style={{ flex: 2 }}>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Mesto:<br/>
-                <input value={city} onChange={e => setCity(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>PSČ:<br/>
-                <input value={zip} onChange={e => setZip(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Krajina:<br/>
-                <input value={country} onChange={e => setCountry(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
+              disabled={!vatEnabled}
+              style={{ width: 60, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4 }}
+            />
+            <span style={{ color: '#666' }}>%</span>
           </div>
         </div>
-        <div style={{ borderTop: '1px solid #dde6f3', margin: '18px 0' }}></div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 10 }}>PDF nastavenia</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Poznámka pre PDF (bude pod tabuľkou):<br/>
-                <textarea value={pdfNote} onChange={e => setPdfNote(e.target.value)} style={{ width: '100%', padding: 8, border: '1px solid #dde6f3', borderRadius: 6, fontSize: 15 }} />
-              </label>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 18, justifyContent: 'flex-end', marginTop: 18 }}>
-          <button type="submit" style={{ padding: '12px 32px', background: '#2346a0', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 700, boxShadow: '0 2px 8px #2346a033', transition:'background 0.18s' }}>Uložiť</button>
-          <button type="button" onClick={onBack} style={{ padding: '12px 32px', background: '#666', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 700, boxShadow: '0 2px 8px #6662', transition:'background 0.18s' }}>Späť</button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function formatCurrency(value: number, currency: string = '€') {
-  return value.toLocaleString('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
-}
-
-function SortableItem({ item, index, isSection, isSubtotal, onEdit, onDelete, items, currency, setItems }: {
-  item: OfferRow;
-  index: number;
-  isSection: boolean;
-  isSubtotal: boolean;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
-  items: OfferRow[];
-  currency: string;
-  setItems: React.Dispatch<React.SetStateAction<OfferRow[]>>;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: item.id });
-
-  // Subtotal calculation for subtotal row
-  let subtotalValue = 0;
-  if (isSubtotal) {
-    // Najdi poslední sekci před tímto subtotalem
-    let lastSectionIdx = -1;
-    for (let j = index - 1; j >= 0; j--) {
-      if (items[j].type === 'section') {
-        lastSectionIdx = j;
-        break;
-      }
-    }
-    // Spočítej sumu všech položek od poslední sekce po tento subtotal
-    for (let j = lastSectionIdx + 1; j < index; j++) {
-      const row = items[j];
-      if (row.type === 'item') {
-        subtotalValue += Number(row.qty ?? 0) * Number(row.price ?? 0);
-      }
-    }
-  }
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.9 : 1,
-    zIndex: isDragging ? 10 : 'auto',
-    position: isDragging ? 'relative' as const : undefined,
-  };
-
-  // Save items to window for subtotal calculation
-  if (!(window as any).offerItems) (window as any).offerItems = [];
-  (window as any).offerItems[index] = item;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`offer-row-card ${isDragging ? 'dragging-row' : ''} ${isSection ? 'section-row' : ''} ${isSubtotal ? 'subtotal-row' : ''}`}
-    >
-      <div {...attributes} {...listeners} className="dnd-handle" style={{ fontSize: 20, padding: '0 12px', cursor: 'grab', userSelect: 'none', color: '#999' }}>☰</div>
-      {/* Název/sloupec 1 */}
-      <div style={{ flex: 3, minWidth: 180, padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {isSubtotal ? (
-          <div style={{ fontWeight: 700, fontSize: 17, color: '#2346a0', background: 'none', border: 'none', outline: 'none', marginBottom: 2 }}>
-            Cena spolu:
-          </div>
-        ) : (
-          <input
-            type="text"
-            value={item.title || ''}
-            onChange={e => {
-              const value = e.target.value;
-              setItems(items => items.map((row, j) => j === index ? { ...row, title: value } : row));
-            }}
-            style={{ fontWeight: isSection ? 700 : 600, fontSize: isSection ? 18 : 17, color: isSection ? '#2346a0' : '#222', background: 'none', border: 'none', outline: 'none', marginBottom: 2, width: '100%' }}
-            placeholder={isSection ? 'Názov sekcie' : 'Názov položky'}
-          />
-        )}
-        {item.type === 'item' && (
-          <textarea
-            value={(item as ItemRow).desc || ''}
-            onChange={e => {
-              const value = e.target.value;
-              setItems(items => items.map((row, j) => j === index && row.type === 'item' ? { ...row, desc: value } : row));
-            }}
-            style={{ fontSize: 13, color: '#888', minHeight: 18, borderTop: '1px solid #eee', marginTop: 4, paddingTop: 2, background: 'none', borderRadius: 4, border: '1px solid #eee', resize: 'vertical', width: '100%' }}
-            placeholder="Popis položky (voliteľné)"
-          />
-        )}
-      </div>
-      {/* Množství/sloupec 2 */}
-      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px' }}>
-        {item.type === 'item' ? (
-          <input
-            type="number"
-            min={0}
-            value={(item as ItemRow).qty || ''}
-            onChange={e => {
-              const value = Number(e.target.value);
-              setItems(items => items.map((row, j) => j === index && row.type === 'item' ? { ...row, qty: value } : row));
-            }}
-            style={{ minWidth: 40, textAlign: 'right', background: 'none', border: 'none', outline: 'none', fontSize: 16 }}
-          />
-        ) : null}
-      </div>
-      {/* Cena/sloupec 3 */}
-      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        {item.type === 'item' ? (
-          <>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Zľava:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="number"
               min={0}
-              step={0.01}
-              value={(item as ItemRow).price || ''}
-              onChange={e => {
-                const value = Number(e.target.value);
-                setItems(items => items.map((row, j) => j === index && row.type === 'item' ? { ...row, price: value } : row));
-              }}
-              style={{ minWidth: 60, textAlign: 'right', background: 'none', border: 'none', outline: 'none', fontSize: 16 }}
+              max={100}
+              value={discount}
+              onChange={e => setDiscount(Number(e.target.value))}
+              style={{ width: 60, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4 }}
             />
-            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
-          </>
-        ) : null}
+            <span style={{ color: '#666' }}>%</span>
+          </div>
+        </div>
       </div>
-      {/* Mezicena/sloupec 4 */}
-      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        {item.type === 'item' ? (
-          <>
-            {formatCurrency(Number((item as ItemRow).qty ?? 0) * Number((item as ItemRow).price ?? 0), '').trim()}
-            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
-          </>
-        ) : isSubtotal ? (
-          <>
-            {formatCurrency(subtotalValue, '').trim()}
-            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
-          </>
-        ) : ''}
-      </div>
-      {/* Delete/ikona */}
-      <div style={{ flex: 0, padding: '0 8px' }}>
-        <button type="button" className="delete-btn" onClick={() => onDelete(item.id)} aria-label="Vymazať">
-          <FaTrash />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function OfferExportPreview({ name, date, client, clientDetails, note, items, vatEnabled, vatRate, total, tableNote, settings, showSupplierDetails = true, showClientDetails = true }: any) {
-  // Moderný layout, krásny export
-  const subtotal = items.reduce((sum: number, i: any) => i.type === 'item' ? sum + (i.qty ?? 0) * (i.price ?? 0) : sum, 0);
-  const vat = vatEnabled ? subtotal * (vatRate ?? 0) / 100 : 0;
-  const clientBoxRef = useRef<HTMLDivElement>(null);
-  const supplierBoxRef = useRef<HTMLDivElement>(null);
-  const [boxHeight, setBoxHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (clientBoxRef.current && supplierBoxRef.current) {
-      const h1 = clientBoxRef.current.offsetHeight;
-      const h2 = supplierBoxRef.current.offsetHeight;
-      setBoxHeight(Math.max(h1, h2));
-    }
-  }, [clientDetails, settings]);
-  return (
-    <div style={{
-      maxWidth: 900,
-      margin: '0 auto',
-      background: '#fff',
-      borderRadius: 12,
-      boxShadow: '0 8px 48px #0002',
-      padding: 36,
-      fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif',
-      color: '#222',
-      minHeight: 900,
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Header: logo + kontakty */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ minHeight: 60, minWidth: 180, display: 'flex', alignItems: 'center' }}>
-          {settings.logo && settings.logo.startsWith('data:') ? (
-            <img
-              src={settings.logo}
-              alt="Logo"
-              style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001' }}
-            />
+      {/* SUMÁR */}
+      <div style={{ background: '#111', color: '#fff', borderRadius: 12, margin: '24px 0 12px 0', width: '100%', boxShadow: '0 2px 12px #1115', display: 'flex', flexDirection: 'row', overflow: 'hidden', fontFamily: 'Noto Sans', alignItems: 'center' }}>
+        {/* Ľavá strana: nadpis */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', padding: '18px 16px 18px 22px' }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{vatEnabled ? 'Celková cena s DPH' : 'Celková cena'}</span>
+        </div>
+        {/* Pravá strana: ceny a badge */}
+        <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', padding: '18px 22px 18px 16px', gap: 5 }}>
+          {(discount > 0 || vatEnabled) && (
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              {discount > 0 && (
+                <span style={{ textDecoration: 'line-through', color: '#fff', opacity: 0.7, fontWeight: 700, fontSize: 15 }}>{formatCurrency(vatEnabled ? subtotal + vat : subtotal)}</span>
+              )}
+              {discount > 0 && (
+                <span style={{ background: '#c00', color: '#fff', fontWeight: 700, fontSize: 12, borderRadius: 5, padding: '3px 10px' }}>Zľava {discount}%</span>
+              )}
+            </div>
+          )}
+          <span style={{ fontSize: 24, fontWeight: 900, color: '#fff', letterSpacing: -1, marginBottom: 4 }}>{formatCurrency(total)}</span>
+          {vatEnabled ? (
+            <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH: {formatCurrency(subtotalAfterDiscount)}</span>
           ) : (
-            <div style={{ color: '#bbb', fontSize: 36, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
+            <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH</span>
           )}
-        </div>
-        <div style={{ textAlign: 'right', fontSize: 14, color: '#222', lineHeight: 1.4 }}>
-          <div style={{ color: '#2346a0', fontWeight: 700, fontSize: 16 }}>{settings.email}</div>
-          <div style={{ color: '#888', fontSize: 14 }}>{settings.phone} | {settings.web}</div>
-        </div>
-      </div>
-      {/* Nadpis */}
-      <div style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', marginBottom: 4, letterSpacing: -0.5 }}>Cenová ponuka</div>
-      <div style={{ color: '#888', fontSize: 16, marginBottom: 8, fontWeight: 500 }}>{name}</div>
-      <div style={{ color: '#888', fontSize: 14, marginBottom: 24 }}>{date && <>Dátum: {date}</>}</div>
-      <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', marginBottom: 20, gap: 16 }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {showClientDetails && clientDetails && (
-            <div ref={clientBoxRef} style={{ background: '#fafdff', padding: 10, borderRadius: 6, fontSize: 12, color: '#444', lineHeight: 1.3, minHeight: boxHeight, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
-              <div style={{ fontWeight: 600, color: '#2346a0', marginBottom: 6, fontSize: 13 }}>Fakturačné údaje klienta:</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontWeight: 500 }}>{clientDetails.name}</div>
-                <div>{clientDetails.address}</div>
-                <div>{clientDetails.zip}</div>
-                <div>{clientDetails.city}</div>
-                <div>{clientDetails.country}</div>
-                <div>IČO: {clientDetails.ico}</div>
-                {clientDetails.dic && <div>DIČ: {clientDetails.dic}</div>}
-                {clientDetails.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
-              </div>
-            </div>
-          )}
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
-          {showSupplierDetails && (
-            <div ref={supplierBoxRef} style={{ background: '#fafdff', padding: 10, borderRadius: 6, fontSize: 12, color: '#444', lineHeight: 1.3, minHeight: boxHeight, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
-              <div style={{ fontWeight: 600, color: '#2346a0', marginBottom: 6, fontSize: 13 }}>Fakturačné údaje dodávateľa:</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontWeight: 500 }}>{settings.name}</div>
-                <div>{settings.address}</div>
-                <div>{settings.zip}</div>
-                <div>{settings.city}</div>
-                <div>{settings.country}</div>
-                <div>IČO: {settings.ico}</div>
-                {settings.dic && <div>DIČ: {settings.dic}</div>}
-                {settings.icDph && <div>IČ DPH: {settings.icDph}</div>}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-      {/* Tabuľka položiek */}
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, marginBottom: 28, fontSize: 14, background: '#fafdff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 8px #0001' }}>
-        <thead>
-          <tr style={{ background: '#eaf1fb', color: '#2346a0', fontWeight: 800 }}>
-            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'left', fontSize: 14 }}>Názov položky / Popis</th>
-            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Počet</th>
-            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Cena (€)</th>
-            <th style={{ padding: 10, border: '1px solid #dde6f3', textAlign: 'right', fontSize: 14 }}>Medzisúčet (€)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item: any, idx: number) => (
-            item.type === 'section' ? (
-              <tr key={idx} style={{ background: '#f3f7fd' }}>
-                <td colSpan={4} style={{ padding: 8, fontWeight: 800, color: '#2346a0', fontSize: 15, border: '1px solid #dde6f3', borderLeft: '4px solid #2346a0', background: '#f3f7fd' }}>{item.title}</td>
-              </tr>
-            ) : item.type === 'subtotal' ? (
-              <tr key={idx} style={{ background: '#eaf1fb' }}>
-                <td colSpan={3} style={{ padding: 8, textAlign: 'right', fontWeight: 700, color: '#2346a0', border: '1px solid #dde6f3', fontSize: 14 }}>Cena spolu:</td>
-                <td style={{ padding: 8, textAlign: 'right', fontWeight: 900, color: '#2346a0', border: '1px solid #dde6f3', fontSize: 15 }}>{subtotal.toFixed(2)} €</td>
-              </tr>
-            ) : (
-              <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#f6fafd' }}>
-                <td style={{ padding: 8, border: '1px solid #dde6f3' }}>
-                  <div style={{ fontWeight: 700, color: '#222', fontSize: 14 }}>{item.title}</div>
-                  {item.desc && <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>{item.desc}</div>}
-                </td>
-                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 500 }}>{item.qty}</td>
-                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 500 }}>{item.price !== undefined ? item.price.toFixed(2) + ' €' : ''}</td>
-                <td style={{ padding: 8, border: '1px solid #dde6f3', textAlign: 'right', fontWeight: 700 }}>{((item.qty ?? 0) * (item.price ?? 0)).toFixed(2)} €</td>
-              </tr>
-            )
-          ))}
-        </tbody>
-      </table>
-      {/* Sumár v čiernom boxe */}
-      <div style={{ background: '#111', color: '#fff', borderRadius: 8, padding: '24px 28px', margin: '24px 0 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px #0002' }}>
-        <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: 0.5 }}>Výsledná cena spolu:</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.5 }}>{total.toFixed(2)} {settings.currency}</div>
-          {vatEnabled && <div style={{ fontSize: 14, color: '#ccc', fontWeight: 400, marginTop: 2 }}>vrátane DPH ({vatRate}%)</div>}
         </div>
       </div>
       {/* Poznámky a podmienky */}
-      {(settings.pdfNote || note || tableNote) && (
-        <div style={{ color: '#666', fontSize: 12, marginBottom: 24, lineHeight: 1.4 }}>
+      {(settings.pdfNote || tableNote) && (
+        <div style={{ color: '#444', fontSize: 12, margin: '22px 40px 0 40px', lineHeight: 1.5 }}>
           {settings.pdfNote && <div style={{ marginBottom: 4 }}>{settings.pdfNote}</div>}
-          {note && <div style={{ marginBottom: 4 }}>{note}</div>}
           {tableNote && <div>{tableNote}</div>}
         </div>
       )}
       {/* Footer v šedom pruhu */}
       <div style={{ background: '#f3f3f7', color: '#888', fontSize: 13, textAlign: 'center', borderRadius: 6, padding: 14, marginTop: 24, letterSpacing: 0.5 }}>
-        {settings.name} | IČO: {settings.ico} | {settings.email} | {settings.web}
+        {settings.name}
+        {settings.ico && ` | IČO: ${settings.ico}`}
+        {settings.dic && ` | DIČ: ${settings.dic}`}
+        {settings.icDph && ` | IČ DPH: ${settings.icDph}`}
+      </div>
+      {/* Tlačidlá Export, Uložiť, Späť */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, marginTop: 32 }}>
+        <button type="button" onClick={handleExportHighResPDF} style={{ background: '#2346a0', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Exportovať PDF</button>
+        <button type="submit" onClick={handleSubmit} style={{ background: '#1a8c3b', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Uložiť</button>
+        <button type="button" onClick={onBack} style={{ background: '#eee', color: '#2346a0', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Späť</button>
       </div>
     </div>
   );
@@ -1256,6 +992,371 @@ function ClientDetailsModal({ isOpen, onClose, clientDetails, onSave }: {
   );
 }
 
+function SortableItem({ 
+  item, 
+  index, 
+  isSection, 
+  isSubtotal, 
+  onEdit, 
+  onDelete, 
+  items, 
+  currency, 
+  setItems 
+}: { 
+  item: OfferRow;
+  index: number;
+  isSection: boolean;
+  isSubtotal: boolean;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  items: OfferRow[];
+  currency: string;
+  setItems: React.Dispatch<React.SetStateAction<OfferRow[]>>;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: item.id });
+
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const [descDraft, setDescDraft] = useState('');
+
+  // Subtotal calculation for subtotal row
+  let subtotalValue = 0;
+  if (isSubtotal) {
+    // Najdi poslední sekci před tímto subtotalem
+    let lastSectionIdx = -1;
+    for (let j = index - 1; j >= 0; j--) {
+      if (items[j].type === 'section') {
+        lastSectionIdx = j;
+        break;
+      }
+    }
+    // Spočítej sumu všech položek od poslední sekce po tento subtotal
+    for (let j = lastSectionIdx + 1; j < index; j++) {
+      const row = items[j];
+      if (row.type === 'item') {
+        subtotalValue += Number(row.qty ?? 0) * Number(row.price ?? 0);
+      }
+    }
+  }
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.9 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+    position: isDragging ? 'relative' as const : undefined,
+  };
+
+  // When opening the editor, use the original HTML for Quill
+  const handleEditDescOpen = () => {
+    setDescDraft(item.desc || '');
+    setIsEditingDesc(true);
+  };
+
+  // Funkcia na vygenerovanie bullet zoznamu z čistého textu:
+  function textToBullets(text: string): string {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return '';
+    return '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`offer-row-card ${isDragging ? 'dragging-row' : ''} ${isSection ? 'section-row' : ''} ${isSubtotal ? 'subtotal-row' : ''}`}
+    >
+      <div {...attributes} {...listeners} className="dnd-handle" style={{ fontSize: 20, padding: '0 12px', cursor: 'grab', userSelect: 'none', color: '#999' }}>☰</div>
+      {/* Název/sloupec 1 */}
+      <div style={{ flex: 3, minWidth: 180, padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {isSubtotal ? (
+          <div style={{ fontWeight: 700, fontSize: 17, color: '#2346a0', background: 'none', border: 'none', outline: 'none', marginBottom: 2 }}>
+            Cena spolu:
+          </div>
+        ) : (
+          <input
+            type="text"
+            value={item.title || ''}
+            onChange={e => {
+              const value = e.target.value;
+              setItems(items => items.map((row, j) => j === index ? { ...row, title: value } : row));
+            }}
+            style={{ fontWeight: isSection ? 700 : 600, fontSize: isSection ? 18 : 17, color: isSection ? '#2346a0' : '#222', background: 'none', border: 'none', outline: 'none', marginBottom: 2, width: '100%' }}
+            placeholder={isSection ? 'Názov sekcie' : 'Názov položky'}
+          />
+        )}
+        {item.type === 'item' && (
+          <>
+            {isEditingDesc ? (
+              <div style={{ marginTop: 4 }}>
+                <ReactQuill
+                  value={descDraft}
+                  onChange={setDescDraft}
+                  modules={{
+                    toolbar: [
+                      ['bold', 'italic', 'underline'],
+                      [{ 'list': 'bullet' }],
+                      [{ 'indent': '-1' }, { 'indent': '+1' }], // allow nested bullets
+                      ['clean']
+                    ]
+                  }}
+                  style={{ minHeight: 100, maxHeight: 220, overflowY: 'auto', background: 'transparent' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                  <button
+                    onClick={() => {
+                      setItems(items => items.map((row, j) => j === index ? { ...row, desc: descDraft } : row));
+                      setIsEditingDesc(false);
+                    }}
+                    style={{
+                      padding: '6px 24px',
+                      background: '#2346a0',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 700
+                    }}
+                  >
+                    Hotovo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{ color: '#888', fontSize: 11, marginTop: 1, cursor: 'pointer', minHeight: 20, padding: '2px 4px', borderRadius: 4, backgroundColor: 'transparent', transition: 'background-color 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                onClick={handleEditDescOpen}
+                dangerouslySetInnerHTML={{ __html: item.desc ? extractBullets(item.desc) : 'Kliknite pre úpravu popisu...' }}
+              />
+            )}
+          </>
+        )}
+      </div>
+      {/* Množství/sloupec 2 */}
+      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px' }}>
+        {item.type === 'item' ? (
+          <input
+            type="number"
+            min={0}
+            value={item.qty || ''}
+            onChange={e => {
+              const value = Number(e.target.value);
+              setItems(items => items.map((row, j) => j === index && row.type === 'item' ? { ...row, qty: value } : row));
+            }}
+            style={{ minWidth: 40, textAlign: 'right', background: 'none', border: 'none', outline: 'none', fontSize: 16 }}
+          />
+        ) : null}
+      </div>
+      {/* Cena/sloupec 3 */}
+      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {item.type === 'item' ? (
+          <>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={item.price || ''}
+              onChange={e => {
+                const value = Number(e.target.value);
+                setItems(items => items.map((row, j) => j === index && row.type === 'item' ? { ...row, price: value } : row));
+              }}
+              style={{ minWidth: 60, textAlign: 'right', background: 'none', border: 'none', outline: 'none', fontSize: 16 }}
+            />
+            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
+          </>
+        ) : null}
+      </div>
+      {/* Mezicena/sloupec 4 */}
+      <div style={{ flex: 1, textAlign: 'right', padding: '0 8px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {item.type === 'item' ? (
+          <>
+            {formatCurrency(Number(item.qty ?? 0) * Number(item.price ?? 0), '').trim()}
+            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
+          </>
+        ) : isSubtotal ? (
+          <>
+            {formatCurrency(subtotalValue, '').trim()}
+            <span style={{ marginLeft: 4, color: '#2346a0', fontWeight: 500 }}>€</span>
+          </>
+        ) : ''}
+      </div>
+      {/* Delete/ikona */}
+      <div style={{ flex: 0, padding: '0 8px' }}>
+        <button type="button" className="delete-btn" onClick={() => onDelete(item.id)} aria-label="Vymazať">
+          <FaTrash />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Komponent pre nastavenia firmy
+function SettingsForm({ settings, onSave, onBack }: { 
+  settings: CompanySettings; 
+  onSave: (settings: CompanySettings) => void; 
+  onBack: () => void; 
+}) {
+  const [formData, setFormData] = useState<CompanySettings>(settings);
+  
+  const handleChange = (field: keyof CompanySettings, value: string | number | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <div className="offer-card offer-live-preview" style={{ maxWidth: 700, margin: '0 auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
+      <h1 style={{ fontSize: 28, fontWeight: 900, color: '#2346a0', marginBottom: 28, letterSpacing: -0.5 }}>Nastavenia firmy</h1>
+      
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Logo firmy</label>
+          <LogoUpload 
+            value={formData.logo} 
+            onChange={(logo: string) => handleChange('logo', logo)}
+            onRemove={() => handleChange('logo', '')}
+          />
+        </div>
+        
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Názov firmy</label>
+          <input 
+            type="text" 
+            value={formData.name} 
+            onChange={(e) => handleChange('name', e.target.value)}
+            style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+          />
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>IČO</label>
+            <input 
+              type="text" 
+              value={formData.ico} 
+              onChange={(e) => handleChange('ico', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>DIČ</label>
+            <input 
+              type="text" 
+              value={formData.dic} 
+              onChange={(e) => handleChange('dic', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>IČ DPH</label>
+            <input 
+              type="text" 
+              value={formData.icDph} 
+              onChange={(e) => handleChange('icDph', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>E-mail</label>
+            <input 
+              type="email" 
+              value={formData.email} 
+              onChange={(e) => handleChange('email', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Telefón</label>
+            <input 
+              type="tel" 
+              value={formData.phone} 
+              onChange={(e) => handleChange('phone', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Web</label>
+            <input 
+              type="text" 
+              value={formData.web} 
+              onChange={(e) => handleChange('web', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Predvolená sadzba DPH (%)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="100" 
+              value={formData.defaultRate} 
+              onChange={(e) => handleChange('defaultRate', Number(e.target.value))}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Mena</label>
+            <select 
+              value={formData.currency} 
+              onChange={(e) => handleChange('currency', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            >
+              <option value="EUR">EUR (€)</option>
+              <option value="USD">USD ($)</option>
+              <option value="CZK">CZK (Kč)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+        </div>
+        
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Poznámka v PDF (podmienky, platobné údaje)</label>
+          <textarea 
+            value={formData.pdfNote} 
+            onChange={(e) => handleChange('pdfNote', e.target.value)}
+            style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16, minHeight: 100, resize: 'vertical' }}
+            placeholder="Napr.: Platba na účet: SK12 3456 7890 1234 5678 9012, Dodanie do 14 dní od úhrady..."
+          />
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, marginTop: 32 }}>
+          <button 
+            type="button" 
+            onClick={onBack}
+            style={{ background: '#eee', color: '#2346a0', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
+          >
+            Späť
+          </button>
+          <button 
+            type="submit"
+            style={{ background: '#1a8c3b', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
+          >
+            Uložiť
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function App() {
   const [offers, setOffers] = useState<OfferItem[]>(() => {
     try {
@@ -1271,6 +1372,12 @@ function App() {
     try {
       const data = localStorage.getItem('companySettings');
       const parsed = data ? JSON.parse(data) : null;
+      // AUTO-FIX: If logo is old escaped SVG, decode it
+      if (parsed && typeof parsed.logo === 'string' && parsed.logo.startsWith('data:image/svg+xml;utf8,%3C')) {
+        const svgText = decodeURIComponent(parsed.logo.split(',')[1]);
+        parsed.logo = 'data:image/svg+xml;utf8,' + svgText;
+        localStorage.setItem('companySettings', JSON.stringify(parsed));
+      }
       return parsed ? { ...parsed, dic: parsed.dic || '', icDph: parsed.icDph || '' } : {
         name: '', ico: '', dic: '', icDph: '', email: '', phone: '', web: '', logo: '', defaultRate: 0, currency: 'EUR', pdfNote: ''
       };
@@ -1324,6 +1431,8 @@ function App() {
       vatEnabled: true,
       vatRate: settings.defaultRate || 20,
       tableNote: '',
+      discount: 0,
+      showDetails: true
     });
     setView('form');
   };
@@ -1414,6 +1523,8 @@ function App() {
             initial={editId ? offers.find(o => o.id === editId) : cloneData}
             onBack={handleBack}
             onNotify={(msg: string, type: 'success' | 'error' | 'info') => setNotification({ message: msg, type })}
+            settings={settings}
+            setSettings={setSettings}
           />
         </div>
       ) : (
@@ -1487,6 +1598,52 @@ function App() {
           duration={3000}
         />
       )}
+      <style>{`
+        .pdf-bullets ul {
+          all: unset;
+          list-style-type: disc !important;
+          padding-left: 18px !important;
+          margin: 0 !important;
+          display: block !important;
+        }
+        .pdf-bullets ul li {
+          all: unset;
+          display: list-item !important;
+          list-style-type: disc !important;
+          color: #888 !important;
+          font-size: 11px !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: none !important;
+          border: none !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          gap: 0 !important;
+          flex-direction: initial !important;
+        }
+        .pdf-bullets ul ul {
+          padding-left: 24px !important;
+          margin-top: 2px !important;
+          display: block !important;
+        }
+        .pdf-bullets ul ul li {
+          list-style-type: circle !important;
+          color: #999 !important;
+          display: list-item !important;
+        }
+        .ql-editor ul {
+          padding-left: 1.5em !important;
+        }
+        .ql-editor ul ul {
+          padding-left: 1.5em !important;
+        }
+        .ql-editor li {
+          list-style-type: disc !important;
+        }
+        .ql-editor li li {
+          list-style-type: circle !important;
+        }
+      `}</style>
     </div>
   );
 }

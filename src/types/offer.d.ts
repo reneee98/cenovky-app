@@ -37,6 +37,8 @@ export interface OfferItem {
   vatEnabled: boolean;
   vatRate: number;
   tableNote: string;
+  discount: number;
+  showDetails: boolean;
 }
 
 export interface CompanySettings {

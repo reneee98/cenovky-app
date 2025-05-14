@@ -25,6 +25,8 @@ export interface SectionRow {
   type: 'section';
   title: string;
   desc?: string;
+  qty?: number;
+  price?: number;
 }
 
 export interface SubtotalRow {
@@ -32,6 +34,8 @@ export interface SubtotalRow {
   type: 'subtotal';
   title: string;
   desc?: string;
+  qty?: number;
+  price?: number;
 }
 
 export type OfferRow = ItemRow | SectionRow | SubtotalRow;
@@ -66,6 +70,8 @@ export interface OfferItem {
   vatEnabled: boolean;
   vatRate: number;
   tableNote: string;
+  discount: number;
+  showDetails?: boolean;
 }
 
 // ... rest of the existing types ... 

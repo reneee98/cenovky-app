@@ -6,38 +6,10 @@ interface LogoUploadProps {
   onRemove: () => void;
 }
 
-// Lepšie escapovanie SVG pre DataURL
-function escapeSvgForDataUrl(svg: string): string {
-  return svg
-    .replace(/%/g, '%25')
-    .replace(/#/g, '%23')
-    .replace(/\n/g, '')
-    .replace(/\r/g, '')
-    .replace(/"/g, "'")
-    .replace(/</g, '%3C')
-    .replace(/>/g, '%3E')
-    .replace(/&/g, '%26');
-}
-
-function svgDataUrlToUtf8DataUrl(svgDataUrl: string): string {
-  if (svgDataUrl.startsWith('data:image/svg+xml;base64,')) {
-    const base64 = svgDataUrl.replace('data:image/svg+xml;base64,', '');
-    const svgText = atob(base64);
-    const escaped = escapeSvgForDataUrl(svgText);
-    console.log('SVG text:', svgText.slice(0, 200));
-    return 'data:image/svg+xml;utf8,' + escaped;
-  }
-  if (svgDataUrl.startsWith('data:image/svg+xml;utf8,')) {
-    const svgText = decodeURIComponent(svgDataUrl.replace('data:image/svg+xml;utf8,', ''));
-    const escaped = escapeSvgForDataUrl(svgText);
-    return 'data:image/svg+xml;utf8,' + escaped;
-  }
-  return svgDataUrl;
-}
-
 export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -50,95 +22,100 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
     setIsDragging(false);
   };
 
+  const convertSvgToPng = async (svgText: string) => {
+    try {
+      // Čistenie SVG (rovnaké ako v exporte)
+      svgText = svgText.replace(/^\uFEFF/, '');
+      svgText = svgText.replace(/<!--[\s\S]*?-->/g, '');
+      svgText = svgText.replace(/<\?xml[^>]*>/g, '');
+      svgText = svgText.replace(/^[^<]*<svg/, '<svg');
+      svgText = svgText.replace(/([a-zA-Z0-9\-]+)='([^']*)'/g, '$1="$2"');
+      svgText = svgText.replace(/&[a-zA-Z]+;/g, '');
+      svgText = svgText
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
+        .replace(/<defs>[\s\S]*?<\/defs>/g, '')
+        .replace(/<title>[\s\S]*?<\/title>/g, '');
+      // Validácia cez DOMParser
+      const parser = new window.DOMParser();
+      const doc = parser.parseFromString(svgText, 'image/svg+xml');
+      const parseError = doc.querySelector('parsererror');
+      if (parseError) {
+        throw new Error('SVG parser error: ' + parseError.textContent);
+      }
+      svgText = new XMLSerializer().serializeToString(doc.documentElement);
+      // Konverzia cez canvg
+      const canvgModule = await import('canvg');
+      const Canvg = canvgModule.Canvg;
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Nepodarilo sa vytvoriť canvas.');
+      const v = await Canvg.fromString(ctx, svgText);
+      await v.render();
+      return canvas.toDataURL('image/png');
+    } catch (e: any) {
+      throw new Error('SVG logo sa nepodarilo skonvertovať na PNG: ' + e.message);
+    }
+  };
+
+  const handleFile = async (file: File) => {
+    setError('');
+    setLoading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const result = e.target?.result as string;
+        if (file.type === 'image/svg+xml') {
+          let svgText = '';
+          if (result.startsWith('data:image/svg+xml;base64,')) {
+            svgText = atob(result.split(',')[1]);
+          } else if (result.startsWith('data:image/svg+xml;utf8,')) {
+            svgText = result.split(',')[1];
+          } else {
+            svgText = result;
+          }
+          try {
+            const pngDataUrl = await convertSvgToPng(svgText);
+            onChange(pngDataUrl);
+            setError('');
+          } catch (svgErr: any) {
+            setError(svgErr.message || 'SVG logo sa nepodarilo skonvertovať na PNG.');
+          }
+        } else {
+          onChange(result);
+          setError('');
+        }
+        setLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (e: any) {
+      setError('Chyba pri načítaní súboru: ' + e.message);
+      setLoading(false);
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     setError('');
-
     const file = e.dataTransfer.files[0];
     if (!file) return;
-
     if (!file.type.match(/^image\/(png|jpeg|svg\+xml|webp)$/)) {
       setError('Podporované formáty: PNG, JPG, SVG, WebP');
       return;
     }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (file.type === 'image/svg+xml') {
-        onChange(svgDataUrlToUtf8DataUrl(result));
-      } else {
-        onChange(result);
-      }
-    };
-    reader.readAsDataURL(file);
+    handleFile(file);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const result = ev.target?.result as string;
-      if (result.startsWith('data:image/svg')) {
-        // Konverzia SVG na PNG cez canvg
-        const { Canvg } = await import('canvg');
-        let svgData = '';
-        if (result.startsWith('data:image/svg+xml;base64,')) {
-          svgData = atob(result.split(',')[1]);
-        } else if (
-          result.startsWith('data:image/svg+xml;utf8,') ||
-          result.startsWith('data:image/svg+xml,')
-        ) {
-          svgData = decodeURIComponent(result.split(',')[1]);
-        } else {
-          svgData = result;
-        }
-        // Odstráň všetko pred <svg
-        const svgStart = svgData.indexOf('<svg');
-        if (svgStart !== -1) {
-          svgData = svgData.slice(svgStart);
-        }
-        // Kompletné čistenie SVG pre canvg
-        svgData = svgData
-          .replace(/class=["']cls-1["']/g, 'fill-rule="evenodd"')
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
-          .replace(/<defs>[\s\S]*?<\/defs>/g, '')
-          .replace(/<title>[\s\S]*?<\/title>/g, '')
-          .replace(/class=["'][^"']*["']/g, '');
-        svgData = svgData.replace(
-          /<svg[^>]*xmlns=["'][^"']*["'][^>]*viewBox=["'][^"']*["'][^>]*>/,
-          match => {
-            const xmlns = match.match(/xmlns=["'][^"']*["']/)?.[0] || '';
-            const viewBox = match.match(/viewBox=["'][^"']*["']/)?.[0] || '';
-            return `<svg ${xmlns} ${viewBox}>`;
-          }
-        );
-        svgData = svgData
-          .replace(/ id=["'][^"']*["']/g, '')
-          .replace(/ data-name=["'][^"']*["']/g, '');
-        const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 300;
-        const ctx = canvas.getContext('2d');
-        let pngDataUrl = result;
-        if (ctx) {
-          try {
-            const v = await Canvg.fromString(ctx, svgData);
-            await v.render();
-            pngDataUrl = canvas.toDataURL('image/png');
-          } catch (err) {
-            alert('SVG logo sa nepodarilo konvertovať na PNG. Skontrolujte validitu SVG.');
-            return;
-          }
-        }
-        onChange(pngDataUrl);
-      } else {
-        onChange(result);
-      }
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.match(/^image\/(png|jpeg|svg\+xml|webp)$/)) {
+      setError('Podporované formáty: PNG, JPG, SVG, WebP');
+      return;
+    }
+    handleFile(file);
   };
 
   return (
@@ -171,7 +148,9 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-        {value ? (
+        {loading ? (
+          <div style={{ color: '#2346a0', fontWeight: 600, fontSize: 16, margin: 16 }}>Konvertujem logo...</div>
+        ) : value ? (
           <>
             <LogoDisplay value={value} />
             <div style={{ color: '#666', fontSize: 14 }}>
@@ -190,7 +169,7 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
       {error && (
         <div style={{ color: '#c00', fontSize: 14, marginTop: 8 }}>{error}</div>
       )}
-      {value && (
+      {value && !loading && (
         <button
           onClick={(e) => {
             e.stopPropagation();
