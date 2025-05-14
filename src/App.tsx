@@ -510,6 +510,39 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
             <div style={{ fontSize: 15, color: '#444', marginBottom: 2 }}>{name || 'Cenová ponuka na ...'}</div>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>Dátum: {formattedDate}</div>
           </div>
+          
+          {/* Fakturačné údaje - dva boxy vedľa seba */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', marginTop: 20, marginBottom: 20 }}>
+            {/* Fakturačné údaje klienta */}
+            <div style={{ width: '48%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#444', marginBottom: 8 }}>Fakturačné údaje klienta:</div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
+                <div>{clientDetails?.name || ''}</div>
+                <div>{clientDetails?.company || ''}</div>
+                <div>{clientDetails?.address || ''}</div>
+                <div>{clientDetails?.zip || ''} {clientDetails?.city || ''}</div>
+                <div>{clientDetails?.country || ''}</div>
+                <div style={{ marginTop: 5 }}>IČO: {clientDetails?.ico || ''}</div>
+                {clientDetails?.dic && <div>DIČ: {clientDetails.dic}</div>}
+                {clientDetails?.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
+              </div>
+            </div>
+            
+            {/* Fakturačné údaje dodávateľa */}
+            <div style={{ width: '48%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#444', marginBottom: 8 }}>Fakturačné údaje dodávateľa:</div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
+                <div>{settings.name}</div>
+                <div>{settings.address || ''}</div>
+                <div>{settings.zip || ''} {settings.city || ''}</div>
+                <div>{settings.country || ''}</div>
+                <div style={{ marginTop: 5 }}>IČO: {settings.ico || ''}</div>
+                {settings.dic && <div>DIČ: {settings.dic}</div>}
+                {settings.icDph && <div>IČ DPH: {settings.icDph}</div>}
+              </div>
+            </div>
+          </div>
+          
           {/* Tabuľka položiek */}
           <div style={{ margin: '24px 0 0 0', padding: '0 40px' }}>
             <div style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', border: '1.5px solid #e3e8f7', boxShadow: '0 2px 12px #1112' }}>
@@ -692,31 +725,132 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
         {name || 'Názov ponuky'}
       </div>
-      {/* Klient + fakturačné údaje + switch vedľa seba */}
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{ flex: 1 }}></div>
-        <button
-          onClick={() => setIsClientModalOpen(true)}
-          style={{
-            padding: '8px 16px',
-            background: '#2346a0',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 14,
-            fontWeight: 500
-          }}
-        >
-          <FaUser size={14} />
-          {clientDetails ? 'Upraviť fakturačné údaje' : 'Pridať fakturačné údaje'}
-        </button>
-        {/* Switch for fakturačné údaje v PDF */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, cursor: 'pointer', marginLeft: 8 }}>
-          <span style={{ fontSize: 14 }}>Zobraziť vo PDF</span>
+      {/* Fakturačné údaje - dva boxy vedľa seba */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, gap: 20 }}>
+        {/* Fakturačné údaje klienta */}
+        <div style={{ width: '50%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#444' }}>Fakturačné údaje klienta:</div>
+            <button
+              onClick={() => setIsClientModalOpen(true)}
+              style={{
+                padding: '4px 10px',
+                background: '#2346a0',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <FaUser size={10} />
+              {clientDetails ? 'Upraviť' : 'Pridať'}
+            </button>
+          </div>
+          
+          <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
+            {clientDetails ? (
+              <>
+                <div>{clientDetails.name}</div>
+                {clientDetails.company && <div>{clientDetails.company}</div>}
+                <div>{clientDetails.address}</div>
+                <div>{clientDetails.zip} {clientDetails.city}</div>
+                <div>{clientDetails.country}</div>
+                <div style={{ marginTop: 5 }}>IČO: {clientDetails.ico}</div>
+                {clientDetails.dic && <div>DIČ: {clientDetails.dic}</div>}
+                {clientDetails.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
+              </>
+            ) : (
+              <div style={{ color: '#999', fontStyle: 'italic' }}>Nie sú zadané žiadne údaje</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Fakturačné údaje dodávateľa */}
+        <div style={{ width: '50%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#444', marginBottom: 8 }}>Fakturačné údaje dodávateľa:</div>
+          <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>Názov:</span>
+              <input 
+                type="text" 
+                value={settings.name || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, name: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>Adresa:</span>
+              <input 
+                type="text" 
+                value={settings.address || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, address: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>PSČ:</span>
+              <input 
+                type="text" 
+                value={settings.zip || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, zip: e.target.value }))}
+                style={{ width: 70, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+              <span style={{ marginLeft: 5, minWidth: 40 }}>Mesto:</span>
+              <input 
+                type="text" 
+                value={settings.city || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, city: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>Krajina:</span>
+              <input 
+                type="text" 
+                value={settings.country || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, country: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>IČO:</span>
+              <input 
+                type="text" 
+                value={settings.ico || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, ico: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ minWidth: 60 }}>DIČ:</span>
+              <input 
+                type="text" 
+                value={settings.dic || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, dic: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ minWidth: 60 }}>IČ DPH:</span>
+              <input 
+                type="text" 
+                value={settings.icDph || ''} 
+                onChange={(e) => setSettings(prev => ({ ...prev, icDph: e.target.value }))}
+                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Zobraziť vo PDF switch */}
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, cursor: 'pointer' }}>
+          <span style={{ fontSize: 14 }}>Zobraziť fakturačné údaje v PDF</span>
           <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20 }}>
             <input type="checkbox" checked={showDetails} onChange={e => setShowDetails(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
             <span style={{
@@ -744,6 +878,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
           </span>
         </label>
       </div>
+      
       {/* POLOŽKY A SEKCIÁ */}
       <ErrorBoundary>
         <DndContext
