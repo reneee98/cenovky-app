@@ -725,132 +725,32 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, borderBottom: '1px solid rgba(0,0,0,0.03)' }} contentEditable suppressContentEditableWarning onBlur={e => setName(e.currentTarget.textContent || '')}>
         {name || 'Názov ponuky'}
       </div>
-      {/* Fakturačné údaje - dva boxy vedľa seba */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, gap: 20 }}>
-        {/* Fakturačné údaje klienta */}
-        <div style={{ width: '50%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#444' }}>Fakturačné údaje klienta:</div>
-            <button
-              onClick={() => setIsClientModalOpen(true)}
-              style={{
-                padding: '4px 10px',
-                background: '#2346a0',
-                color: 'white',
-                border: 'none',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5
-              }}
-            >
-              <FaUser size={10} />
-              {clientDetails ? 'Upraviť' : 'Pridať'}
-            </button>
-          </div>
-          
-          <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
-            {clientDetails ? (
-              <>
-                <div>{clientDetails.name}</div>
-                {clientDetails.company && <div>{clientDetails.company}</div>}
-                <div>{clientDetails.address}</div>
-                <div>{clientDetails.zip} {clientDetails.city}</div>
-                <div>{clientDetails.country}</div>
-                <div style={{ marginTop: 5 }}>IČO: {clientDetails.ico}</div>
-                {clientDetails.dic && <div>DIČ: {clientDetails.dic}</div>}
-                {clientDetails.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
-              </>
-            ) : (
-              <div style={{ color: '#999', fontStyle: 'italic' }}>Nie sú zadané žiadne údaje</div>
-            )}
-          </div>
-        </div>
-        
-        {/* Fakturačné údaje dodávateľa */}
-        <div style={{ width: '50%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#444', marginBottom: 8 }}>Fakturačné údaje dodávateľa:</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>Názov:</span>
-              <input 
-                type="text" 
-                value={settings.name || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, name: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>Adresa:</span>
-              <input 
-                type="text" 
-                value={settings.address || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, address: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>PSČ:</span>
-              <input 
-                type="text" 
-                value={settings.zip || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, zip: e.target.value }))}
-                style={{ width: 70, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-              <span style={{ marginLeft: 5, minWidth: 40 }}>Mesto:</span>
-              <input 
-                type="text" 
-                value={settings.city || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, city: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>Krajina:</span>
-              <input 
-                type="text" 
-                value={settings.country || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, country: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>IČO:</span>
-              <input 
-                type="text" 
-                value={settings.ico || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, ico: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ minWidth: 60 }}>DIČ:</span>
-              <input 
-                type="text" 
-                value={settings.dic || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, dic: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ minWidth: 60 }}>IČ DPH:</span>
-              <input 
-                type="text" 
-                value={settings.icDph || ''} 
-                onChange={(e) => setSettings(prev => ({ ...prev, icDph: e.target.value }))}
-                style={{ flex: 1, padding: '2px 5px', border: '1px solid #dde6f3', borderRadius: 3, fontSize: 12 }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
       
-      {/* Zobraziť vo PDF switch */}
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, cursor: 'pointer' }}>
-          <span style={{ fontSize: 14 }}>Zobraziť fakturačné údaje v PDF</span>
+      {/* Klient + fakturačné údaje + switch vedľa seba */}
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ flex: 1 }}></div>
+        <button
+          onClick={() => setIsClientModalOpen(true)}
+          style={{
+            padding: '8px 16px',
+            background: '#2346a0',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 14,
+            fontWeight: 500
+          }}
+        >
+          <FaUser size={14} />
+          {clientDetails ? 'Upraviť fakturačné údaje' : 'Pridať fakturačné údaje'}
+        </button>
+        {/* Switch for fakturačné údaje v PDF */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, cursor: 'pointer', marginLeft: 8 }}>
+          <span style={{ fontSize: 14 }}>Zobraziť vo PDF</span>
           <span style={{ position: 'relative', display: 'inline-block', width: 36, height: 20 }}>
             <input type="checkbox" checked={showDetails} onChange={e => setShowDetails(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
             <span style={{
@@ -1100,89 +1000,106 @@ function ClientDetailsModal({ isOpen, onClose, clientDetails, onSave }: {
     }}>
       <div style={{
         background: 'white',
-        padding: 18,
+        padding: 24,
         borderRadius: 10,
         width: '100%',
-        maxWidth: 420,
+        maxWidth: 650,
         maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 4px 32px #0002',
       }}>
-        <h2 style={{ marginTop: 0, marginBottom: 16, color: '#2346a0', fontSize: 20 }}>Fakturačné údaje klienta</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Meno / Firma</label>
-            <input
-              type="text"
-              value={details.name}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, name: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČO</label>
-            <input
-              type="text"
-              value={details.ico}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, ico: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DIČ</label>
-            <input
-              type="text"
-              value={details.dic}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, dic: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČ DPH</label>
-            <input
-              type="text"
-              value={details.icDph}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, icDph: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Adresa</label>
-            <input
-              type="text"
-              value={details.address}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, address: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Mesto</label>
-            <input
-              type="text"
-              value={details.city}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, city: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>PSČ</label>
-            <input
-              type="text"
-              value={details.zip}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, zip: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Krajina</label>
-            <input
-              type="text"
-              value={details.country}
-              onChange={e => setDetails((d: ClientDetails) => ({ ...d, country: e.target.value }))}
-              style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
-            />
+        <h2 style={{ marginTop: 0, marginBottom: 24, color: '#2346a0', fontSize: 22 }}>Fakturačné údaje</h2>
+        
+        <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+          {/* Klient */}
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 16, color: '#333', marginBottom: 16 }}>Údaje klienta</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Meno / Firma</label>
+                <input
+                  type="text"
+                  value={details.name}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, name: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Spoločnosť</label>
+                <input
+                  type="text"
+                  value={details.company || ''}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, company: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČO</label>
+                <input
+                  type="text"
+                  value={details.ico}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, ico: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>DIČ</label>
+                <input
+                  type="text"
+                  value={details.dic || ''}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, dic: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>IČ DPH</label>
+                <input
+                  type="text"
+                  value={details.icDph || ''}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, icDph: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Adresa</label>
+                <input
+                  type="text"
+                  value={details.address}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, address: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Mesto</label>
+                <input
+                  type="text"
+                  value={details.city}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, city: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>PSČ</label>
+                <input
+                  type="text"
+                  value={details.zip}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, zip: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Krajina</label>
+                <input
+                  type="text"
+                  value={details.country}
+                  onChange={e => setDetails((d: ClientDetails) => ({ ...d, country: e.target.value }))}
+                  style={{ width: '100%', padding: 6, border: '1px solid #dde6f3', borderRadius: 5, fontSize: 13 }}
+                />
+              </div>
+            </div>
           </div>
         </div>
+        
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             onClick={onClose}
