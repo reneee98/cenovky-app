@@ -1469,6 +1469,48 @@ function SettingsForm({ settings, onSave, onBack }: {
           </div>
         </div>
         
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#2346a0', marginBottom: 16, marginTop: 32 }}>Fakturačné údaje</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Adresa</label>
+            <input 
+              type="text" 
+              value={formData.address || ''} 
+              onChange={(e) => handleChange('address', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+              placeholder="Ulica a číslo"
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Mesto</label>
+            <input 
+              type="text" 
+              value={formData.city || ''} 
+              onChange={(e) => handleChange('city', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>PSČ</label>
+            <input 
+              type="text" 
+              value={formData.zip || ''} 
+              onChange={(e) => handleChange('zip', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Krajina</label>
+            <input 
+              type="text" 
+              value={formData.country || 'Slovensko'} 
+              onChange={(e) => handleChange('country', e.target.value)}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #dde6f3', borderRadius: 8, fontSize: 16 }}
+            />
+          </div>
+        </div>
+        
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#2346a0', marginBottom: 16, marginTop: 32 }}>Kontaktné údaje</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
           <div>
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>E-mail</label>
@@ -1499,6 +1541,7 @@ function SettingsForm({ settings, onSave, onBack }: {
           </div>
         </div>
         
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#2346a0', marginBottom: 16, marginTop: 32 }}>Nastavenia ponúk</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
           <div>
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 15, fontWeight: 600 }}>Predvolená sadzba DPH (%)</label>
