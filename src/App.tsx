@@ -960,6 +960,17 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
         <button type="submit" onClick={handleSubmit} style={{ background: '#1a8c3b', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Uložiť</button>
         <button type="button" onClick={onBack} style={{ background: '#eee', color: '#2346a0', border: 'none', borderRadius: 6, padding: '10px 22px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Späť</button>
       </div>
+      
+      {/* Modálne okno pre fakturačné údaje */}
+      <ClientDetailsModal 
+        isOpen={isClientModalOpen} 
+        onClose={() => setIsClientModalOpen(false)} 
+        clientDetails={clientDetails} 
+        onSave={(details) => {
+          setClientDetails(details);
+          setIsClientModalOpen(false);
+        }} 
+      />
     </div>
   );
 }
