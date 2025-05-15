@@ -209,6 +209,41 @@ export async function exportOfferPdfWithPdfmake(offer: OfferItem, settings: Comp
       { text: `${settings.email} | ${settings.phone} | ${settings.web}`, fontSize: 10, color: '#666', margin: [0, 0, 0, 10] },
       { text: `Cenová ponuka na ${offer.name}`, style: 'header', margin: [0, 10, 0, 10] },
       offer.date ? { text: `Dátum: ${offer.date}`, fontSize: 10, margin: [0, 0, 0, 10] } : {},
+      
+      // Fakturačné údaje - dva stĺpce
+      {
+        columns: [
+          {
+            width: '50%',
+            stack: [
+              { text: 'Fakturačné údaje klienta:', fontSize: 11, bold: true, color: '#444', margin: [0, 0, 0, 5] },
+              { text: offer.clientDetails?.name || '', fontSize: 10 },
+              { text: offer.clientDetails?.company || '', fontSize: 10 },
+              { text: offer.clientDetails?.address || '', fontSize: 10 },
+              { text: `${offer.clientDetails?.zip || ''} ${offer.clientDetails?.city || ''}`, fontSize: 10 },
+              { text: offer.clientDetails?.country || '', fontSize: 10 },
+              { text: `IČO: ${offer.clientDetails?.ico || ''}`, fontSize: 10 },
+              offer.clientDetails?.dic ? { text: `DIČ: ${offer.clientDetails.dic}`, fontSize: 10 } : {},
+              offer.clientDetails?.icDph ? { text: `IČ DPH: ${offer.clientDetails.icDph}`, fontSize: 10 } : {}
+            ]
+          },
+          {
+            width: '50%',
+            stack: [
+              { text: 'Fakturačné údaje dodávateľa:', fontSize: 11, bold: true, color: '#444', margin: [0, 0, 0, 5] },
+              { text: settings.name, fontSize: 10 },
+              { text: settings.address || '', fontSize: 10 },
+              { text: `${settings.zip || ''} ${settings.city || ''}`, fontSize: 10 },
+              { text: settings.country || '', fontSize: 10 },
+              { text: `IČO: ${settings.ico || ''}`, fontSize: 10 },
+              settings.dic ? { text: `DIČ: ${settings.dic}`, fontSize: 10 } : {},
+              settings.icDph ? { text: `IČ DPH: ${settings.icDph}`, fontSize: 10 } : {}
+            ]
+          }
+        ],
+        margin: [0, 0, 0, 15]
+      },
+      
       {
         table: {
           headerRows: 1,
