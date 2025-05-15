@@ -408,271 +408,287 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
 
   async function handleExportHighResPDF() {
     try {
-      let exportLogo = settings.logo;
-      // Robustné spracovanie SVG loga
-      if (settings.logo && settings.logo.startsWith('data:image/svg')) {
-        let svgData = '';
-        if (settings.logo.startsWith('data:image/svg+xml;base64,')) {
-          svgData = atob(settings.logo.split(',')[1]);
-        } else if (settings.logo.startsWith('data:image/svg+xml;utf8,')) {
-          svgData = settings.logo.split(',')[1];
-        } else {
-          svgData = settings.logo;
-        }
-        // 1. Čistenie SVG
-        svgData = svgData.replace(/^ FF/, ''); // BOM
-        svgData = svgData.replace(/<!--[\s\S]*?-->/g, ''); // komentáre
-        svgData = svgData.replace(/<\?xml[^>]*>/g, ''); // XML deklarácia
-        svgData = svgData.replace(/^[^<]*<svg/, '<svg'); // whitespace pred <svg
-        svgData = svgData.replace(/([a-zA-Z0-9\-]+)='([^']*)'/g, '$1="$2"');
-        svgData = svgData.replace(/&[a-zA-Z]+;/g, ''); // entity
-        svgData = svgData
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
-          .replace(/<defs>[\s\S]*?<\/defs>/g, '')
-          .replace(/<title>[\s\S]*?<\/title>/g, '');
-        // 2. Validácia cez DOMParser
-        let validSVG = true;
-        try {
-          const parser = new window.DOMParser();
-          const doc = parser.parseFromString(svgData, 'image/svg+xml');
-          const parseError = doc.querySelector('parsererror');
-          if (parseError) {
-            validSVG = false;
-            alert('Vaše SVG logo obsahuje chybu v atribútoch alebo zápise. Skúste ho exportovať z grafického editora znova, alebo použite PNG.\n\nChyba: ' + parseError.textContent);
-          } else {
-            svgData = new XMLSerializer().serializeToString(doc.documentElement);
-          }
-        } catch (e) {
-          validSVG = false;
-          alert('Vaše SVG logo nie je validné XML. Skúste ho exportovať z grafického editora znova, alebo použite PNG.');
-        }
-        // 3. Konverzia cez canvg
-        if (validSVG) {
-          try {
-            const canvgModule = await import('canvg');
-            const Canvg = canvgModule.Canvg;
-            const canvas = document.createElement('canvas');
-            canvas.width = 800;
-            canvas.height = 300;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              const v = await Canvg.fromString(ctx, svgData);
-              await v.render();
-              exportLogo = canvas.toDataURL('image/png');
-            }
-          } catch (svgErr) {
-            alert('SVG logo sa nepodarilo konvertovať do PNG pre PDF export. Skúste SVG exportovať z grafického editora znova, alebo použite PNG.\n\nChyba: ' + svgErr);
-            exportLogo = settings.logo; // fallback na SVG DataURL
-          }
-        } else {
-          exportLogo = settings.logo; // fallback na SVG DataURL
-        }
-      }
-      // Pokračuje pôvodný kód: vytvorenie tempDiv, render, html2pdf
+      // Vytvorenie tempDiv pre PDF export
       const tempDiv = document.createElement('div');
-      tempDiv.style.position = 'fixed';
-      tempDiv.style.left = '-9999px';
-      tempDiv.style.top = '0';
-      tempDiv.style.zIndex = '-1';
       document.body.appendChild(tempDiv);
-
-      // Calculate totals
+      
+      // Výpočet cien
       const subtotal = items.reduce((sum, i) => i.type === 'item' ? sum + (i.qty ?? 0) * (i.price ?? 0) : sum, 0);
       const discountAmount = subtotal * (discount / 100);
       const subtotalAfterDiscount = subtotal - discountAmount;
       const vat = vatEnabled ? subtotalAfterDiscount * (vatRate / 100) : 0;
       const total = subtotalAfterDiscount + vat;
-
-      // Use createRoot for React 18 compatibility
-      const root = createRoot(tempDiv);
-      // Získaj dnešný dátum vo formáte DD.MM.YYYY
+      
+      // Získame dnešný dátum
       const today = new Date();
-      const formattedDate = today.getDate().toString().padStart(2, '0') + '.' + (today.getMonth() + 1).toString().padStart(2, '0') + '.' + today.getFullYear();
+      const formattedDate = today.getDate().toString().padStart(2, '0') + '.' + 
+                           (today.getMonth() + 1).toString().padStart(2, '0') + '.' + 
+                           today.getFullYear();
+
+      // Vytvoríme React root a vykreslíme PDF obsah
+      const root = createRoot(tempDiv);
       root.render(
-        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', maxWidth: 820, margin: '0 auto', padding: 0, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
-          {/* LOGO a HLAVIČKA */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '40px 40px 0 40px' }}>
-            <div style={{ minHeight: 48, minWidth: 140, display: 'flex', alignItems: 'center' }}>
-              {exportLogo && exportLogo.length > 0 ? (
-                <img src={exportLogo} alt="Logo" style={{ maxHeight: 48, maxWidth: 140, objectFit: 'contain' }} />
-              ) : (
-                <div style={{ color: '#bbb', fontSize: 28, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
-              )}
+        <div style={{ fontFamily: 'Noto Sans, Arial, sans-serif', padding: 0, margin: 0, background: '#fff' }}>
+          {/* Hlavička s logom */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '30px 40px 10px 40px' }}>
+            <div style={{ maxWidth: 150, maxHeight: 50 }}>
+              {settings.logo ? <img src={settings.logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : 
+               <div style={{ fontSize: 28, fontWeight: 900, color: '#ccc' }}>LOGO</div>}
             </div>
-            <div style={{ textAlign: 'right', fontSize: 13, color: '#111', fontWeight: 700, lineHeight: 1.3 }}>
-              <div style={{ color: '#111', fontWeight: 700 }}>{settings.email}</div>
-              <div style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>{settings.phone} | {settings.web}</div>
-            </div>
-          </div>
-          {/* Názov ponuky a popis */}
-          <div style={{ padding: '0 40px', marginTop: 18 }}>
-            <div style={{ fontSize: 24, fontWeight: 900, color: '#111', marginBottom: 4, letterSpacing: -0.5 }}>Cenová ponuka</div>
-            <div style={{ fontSize: 15, color: '#444', marginBottom: 2 }}>{name || 'Cenová ponuka na ...'}</div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>Dátum: {formattedDate}</div>
-          </div>
-          
-          {/* Fakturačné údaje - dva boxy vedľa seba */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', marginTop: 20, marginBottom: 20 }}>
-            {/* Fakturačné údaje klienta */}
-            <div style={{ width: '48%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#444', marginBottom: 8 }}>Fakturačné údaje klienta:</div>
-              <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
-                <div>{clientDetails?.name || ''}</div>
-                <div>{clientDetails?.company || ''}</div>
-                <div>{clientDetails?.address || ''}</div>
-                <div>{clientDetails?.zip || ''} {clientDetails?.city || ''}</div>
-                <div>{clientDetails?.country || ''}</div>
-                <div style={{ marginTop: 5 }}>IČO: {clientDetails?.ico || ''}</div>
-                {clientDetails?.dic && <div>DIČ: {clientDetails.dic}</div>}
-                {clientDetails?.icDph && <div>IČ DPH: {clientDetails.icDph}</div>}
-              </div>
-            </div>
-            
-            {/* Fakturačné údaje dodávateľa */}
-            <div style={{ width: '48%', padding: 15, borderRadius: 8, border: '1px solid #e3e8f7', background: '#fafbfd' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#444', marginBottom: 8 }}>Fakturačné údaje dodávateľa:</div>
-              <div style={{ fontSize: 12, lineHeight: 1.5, color: '#555' }}>
-                <div>{settings.name}</div>
-                <div>{settings.address || ''}</div>
-                <div>{settings.zip || ''} {settings.city || ''}</div>
-                <div>{settings.country || ''}</div>
-                <div style={{ marginTop: 5 }}>IČO: {settings.ico || ''}</div>
-                {settings.dic && <div>DIČ: {settings.dic}</div>}
-                {settings.icDph && <div>IČ DPH: {settings.icDph}</div>}
-              </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>{settings.email}</div>
+              <div style={{ color: '#666', fontSize: 11 }}>{settings.phone} | {settings.web}</div>
             </div>
           </div>
           
-          {/* Tabuľka položiek */}
-          <div style={{ margin: '24px 0 0 0', padding: '0 40px' }}>
-            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', border: '1.5px solid #e3e8f7', boxShadow: '0 2px 12px #1112' }}>
-              <div style={{ display: 'flex', fontWeight: 800, fontSize: 13, background: '#222', color: '#fff', padding: '12px 0 12px 0', borderBottom: '2px solid #e3e8f7', letterSpacing: 0.2 }}>
-                <div style={{ flex: 3, padding: '0 12px' }}>Názov položky / Popis</div>
-                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Počet</div>
-                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Cena (€)</div>
-                <div style={{ flex: 1, textAlign: 'right', padding: '0 12px' }}>Medzisúčet (€)</div>
-              </div>
-              {items.map((item, index) => {
-                const isSection = item.type === 'section';
-                const isSubtotal = item.type === 'subtotal';
-                let subtotalValue = 0;
-                if (isSubtotal) {
-                  let lastSectionIdx = -1;
-                  for (let j = index - 1; j >= 0; j--) {
-                    if (items[j].type === 'section') {
-                      lastSectionIdx = j;
-                      break;
-                    }
-                  }
-                  for (let j = lastSectionIdx + 1; j < index; j++) {
-                    const row = items[j];
-                    if (row.type === 'item') {
-                      subtotalValue += Number(row.qty ?? 0) * Number(row.price ?? 0);
-                    }
-                  }
-                }
-                if (isSection) {
-                  return (
-                    <div key={item.id} style={{ background: '#f5f5f5', fontWeight: 800, color: '#111', fontSize: 15, padding: '12px 0 12px 18px', borderLeft: '6px solid #222', margin: '0', borderRadius: 0, letterSpacing: 0.5, display: 'flex', alignItems: 'center' }}>
-                      {item.title}
-                    </div>
-                  );
-                }
-                if (isSubtotal) {
-                  return (
-                    <div key={item.id} style={{ display: 'flex', background: '#ededed', fontWeight: 700, color: '#111', fontSize: 13, padding: '8px 0', borderTop: '1.5px solid #e3e8f7' }}>
-                      <div style={{ flex: 3, padding: '0 12px', textAlign: 'right', fontWeight: 700 }}>Cena spolu:</div>
-                      <div style={{ flex: 1 }}></div>
-                      <div style={{ flex: 1 }}></div>
-                      <div style={{ flex: 1, textAlign: 'right', padding: '0 12px', fontWeight: 900 }}>{formatCurrency(subtotalValue, '€')}</div>
-                    </div>
-                  );
-                }
-                // Položka
-                return (
-                  <div key={item.id} style={{ display: 'flex', fontSize: 12, background: '#fff', borderTop: '1px solid #e3e8f7', minHeight: 22 }}>
-                    <div style={{ flex: 3, padding: '6px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ fontWeight: 700, color: '#111', fontSize: 13 }}>{item.title}</div>
-                      {item.type === 'item' && item.desc && (
-                        <div className="pdf-bullets" style={{ color: '#888', fontSize: 11, marginTop: 1 }} dangerouslySetInnerHTML={{ __html: extractBullets(item.desc) }} />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#222', fontWeight: 500 }}>{item.qty}</div>
-                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#222', fontWeight: 500 }}>{item.price !== undefined ? formatCurrency(item.price, '€') : ''}</div>
-                    <div style={{ flex: 1, textAlign: 'right', padding: '6px 12px', color: '#111', fontWeight: 900 }}>{item.type === 'item' ? formatCurrency((item.qty ?? 0) * (item.price ?? 0), '€') : ''}</div>
-                  </div>
-                );
-              })}
+          {/* Názov ponuky */}
+          <div style={{ padding: '0 40px 8px 40px' }}>
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 2 }}>Cenová ponuka</div>
+            <div style={{ fontSize: 14, color: '#444', marginBottom: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span>{name}</span>
+              <span style={{ fontSize: 11, color: '#888' }}>Dátum: {formattedDate}</span>
             </div>
           </div>
-          {/* SUMÁRNY ČIERNY BOX */}
-          <div style={{ background: '#111', color: '#fff', borderRadius: 12, margin: '24px 40px 12px 40px', boxShadow: '0 2px 12px #1115', padding: '18px 18px', display: 'flex', flexDirection: 'row', alignItems: 'center', fontFamily: 'Noto Sans' }}>
-            {/* Ľavá strana: nadpis */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-              <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{vatEnabled ? 'Celková cena s DPH' : 'Celková cena'}</span>
-            </div>
-            {/* Pravá strana: ceny a badge */}
-            <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 5 }}>
-              {(discount > 0 || vatEnabled) && (
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  {discount > 0 && (
-                    <span style={{ textDecoration: 'line-through', color: '#fff', opacity: 0.7, fontWeight: 700, fontSize: 15 }}>{formatCurrency(vatEnabled ? subtotal + vat : subtotal)}</span>
-                  )}
-                  {discount > 0 && (
-                    <span style={{ background: '#c00', color: '#fff', fontWeight: 700, fontSize: 12, borderRadius: 5, padding: '3px 10px' }}>Zľava {discount}%</span>
-                  )}
+          
+          {/* Fakturačné údaje (ak sú zobrazené) */}
+          {showDetails && clientDetails && (
+            <div style={{ display: 'flex', padding: '12px 40px', gap: 12 }}>
+              <div style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, padding: 10, background: '#fafbfe' }}>
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 3 }}>Fakturačné údaje klienta:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', fontSize: 11, lineHeight: 1.3 }}>
+                  <div style={{ width: '100%' }}><strong>{clientDetails.name}</strong></div>
+                  {clientDetails.company && <div style={{ width: '100%' }}>{clientDetails.company}</div>}
+                  <div style={{ width: '100%' }}>{clientDetails.address}</div>
+                  <div style={{ width: '100%' }}>{clientDetails.zip} {clientDetails.city}</div>
+                  <div style={{ width: '100%' }}>IČO: {clientDetails.ico}</div>
+                  {clientDetails.dic && <div style={{ width: '100%' }}>DIČ: {clientDetails.dic}</div>}
+                  {clientDetails.icDph && <div style={{ width: '100%' }}>IČ DPH: {clientDetails.icDph}</div>}
                 </div>
-              )}
-              <span style={{ fontSize: 24, fontWeight: 900, color: '#fff', letterSpacing: -1, marginBottom: 4 }}>{formatCurrency(total)}</span>
-              {vatEnabled ? (
-                <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH: {formatCurrency(subtotalAfterDiscount)}</span>
-              ) : (
-                <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400, marginTop: 4 }}>Cena bez DPH</span>
-              )}
-            </div>
-          </div>
-          {/* Poznámky a podmienky */}
-          {(settings.pdfNote || tableNote) && (
-            <div style={{ color: '#444', fontSize: 12, margin: '22px 40px 0 40px', lineHeight: 1.5 }}>
-              {settings.pdfNote && <div style={{ marginBottom: 4 }}>{settings.pdfNote}</div>}
-              {tableNote && <div>{tableNote}</div>}
+              </div>
+              <div style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, padding: 10, background: '#fafbfe' }}>
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 3 }}>Fakturačné údaje dodávateľa:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', fontSize: 11, lineHeight: 1.3 }}>
+                  <div style={{ width: '100%' }}><strong>{settings.name}</strong></div>
+                  {settings.address && <div style={{ width: '100%' }}>{settings.address}</div>}
+                  {(settings.zip || settings.city) && <div style={{ width: '100%' }}>{settings.zip} {settings.city}</div>}
+                  <div style={{ width: '100%' }}>IČO: {settings.ico}</div>
+                  {settings.dic && <div style={{ width: '100%' }}>DIČ: {settings.dic}</div>}
+                  {settings.icDph && <div style={{ width: '100%' }}>IČ DPH: {settings.icDph}</div>}
+                </div>
+              </div>
             </div>
           )}
-          {/* Footer v šedom pruhu */}
-          <div style={{ background: '#f3f3f7', color: '#888', fontSize: 12, textAlign: 'center', borderRadius: 8, padding: 14, margin: '22px 40px 22px 40px', letterSpacing: 0.5, boxShadow: '0 2px 8px #1112' }}>
+          
+          {/* Tabuľka s položkami */}
+          <div style={{ margin: '18px 40px', border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden' }}>
+            {/* Hlavička tabuľky */}
+            <div style={{ display: 'flex', background: '#222', color: 'white', padding: '10px 12px', fontWeight: 700, fontSize: 12 }}>
+              <div style={{ flex: 3 }}>Názov položky</div>
+              <div style={{ flex: 1, textAlign: 'right' }}>Počet</div>
+              <div style={{ flex: 1, textAlign: 'right' }}>Cena (€)</div>
+              <div style={{ flex: 1, textAlign: 'right' }}>Spolu (€)</div>
+            </div>
+            
+            {/* Položky */}
+            {items.map((item, index) => {
+              if (item.type === 'section') {
+                return (
+                  <div key={item.id} style={{ 
+                    padding: '8px 12px', 
+                    background: '#f3f3f7', 
+                    fontWeight: 700, 
+                    fontSize: 13,
+                    borderTop: index > 0 ? '1px solid #e0e0e0' : 'none',
+                    borderLeft: '6px solid #222'
+                  }}>
+                    {item.title}
+                  </div>
+                );
+              } else if (item.type === 'subtotal') {
+                // Výpočet medzisúčtu pre sekciu
+                let lastSectionIndex = -1;
+                for (let i = index - 1; i >= 0; i--) {
+                  if (items[i].type === 'section') {
+                    lastSectionIndex = i;
+                    break;
+                  }
+                }
+                
+                let sectionTotal = 0;
+                for (let i = lastSectionIndex + 1; i < index; i++) {
+                  if (items[i].type === 'item') {
+                    sectionTotal += (items[i].qty || 0) * (items[i].price || 0);
+                  }
+                }
+                
+                return (
+                  <div key={item.id} style={{ 
+                    display: 'flex', 
+                    padding: '6px 12px', 
+                    background: '#efefef',
+                    borderTop: '1px solid #e0e0e0',
+                    fontWeight: 600,
+                    fontSize: 12
+                  }}>
+                    <div style={{ flex: 3, textAlign: 'right' }}>Medzisúčet:</div>
+                    <div style={{ flex: 1 }}></div>
+                    <div style={{ flex: 1 }}></div>
+                    <div style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{formatCurrency(sectionTotal, '€')}</div>
+                  </div>
+                );
+              } else {
+                return (
+                  <div key={item.id} style={{ 
+                    display: 'flex', 
+                    padding: '6px 12px',
+                    borderTop: index > 0 ? '1px solid #e0e0e0' : 'none',
+                    fontSize: 12
+                  }}>
+                    <div style={{ flex: 3 }}>
+                      <div style={{ fontWeight: 600 }}>{item.title}</div>
+                      {item.desc && (
+                        <div 
+                          className="pdf-bullets" 
+                          style={{ color: '#666', fontSize: 10, marginTop: 2, lineHeight: 1.2 }}
+                          dangerouslySetInnerHTML={{ __html: extractBullets(item.desc) }}
+                        />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'right' }}>{item.qty}</div>
+                    <div style={{ flex: 1, textAlign: 'right' }}>{item.price?.toFixed(2)} €</div>
+                    <div style={{ flex: 1, textAlign: 'right' }}>
+                      {((item.qty || 0) * (item.price || 0)).toFixed(2)} €
+                    </div>
+                  </div>
+                );
+              }
+            })}
+          </div>
+          
+          {/* Sumár */}
+          <div style={{ 
+            margin: '18px 40px',
+            background: '#111',
+            color: 'white',
+            padding: '12px 16px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            pageBreakInside: 'avoid'
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>
+              {vatEnabled ? 'Celková cena s DPH' : 'Celková cena'}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              {discount > 0 && (
+                <div style={{ marginBottom: 2, fontSize: 12 }}>
+                  <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
+                    {formatCurrency(subtotal + (vatEnabled ? subtotal * (vatRate / 100) : 0), '€')}
+                  </span>
+                  <span style={{ 
+                    background: '#c00', 
+                    color: 'white', 
+                    padding: '1px 6px', 
+                    borderRadius: 4, 
+                    fontSize: 11, 
+                    fontWeight: 700,
+                    marginLeft: 6
+                  }}>
+                    Zľava {discount}%
+                  </span>
+                </div>
+              )}
+              <div style={{ fontSize: 20, fontWeight: 900 }}>
+                {formatCurrency(total, '€')}
+              </div>
+              {vatEnabled && (
+                <div style={{ fontSize: 10, color: '#bbb', marginTop: 2 }}>
+                  Cena bez DPH: {formatCurrency(subtotalAfterDiscount, '€')}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Poznámky - so zvýšeným marginom a anti-page-break vlastnosťami */}
+          {(settings.pdfNote || tableNote) && (
+            <div style={{ 
+              margin: '16px 40px 0',
+              color: '#444',
+              fontSize: 10,
+              lineHeight: 1.3,
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              marginBottom: 12
+            }}>
+              {settings.pdfNote && (
+                <div style={{ marginBottom: 4 }}>
+                  {/* Odstraňujeme text "Testujem doplnkove informácie" */}
+                  {settings.pdfNote.replace(/Testujem doplnkove informácie/g, '')}
+                </div>
+              )}
+              {tableNote && (
+                <div>
+                  {/* Odstraňujeme text "Testujem doplnkove informácie" */}
+                  {tableNote.replace(/Testujem doplnkove informácie/g, '')}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Pätička */}
+          <div style={{
+            margin: '16px 40px 30px',
+            padding: '10px',
+            background: '#f3f3f7',
+            color: '#888',
+            fontSize: 10,
+            textAlign: 'center',
+            borderRadius: 8,
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid'
+          }}>
             {settings.name} {settings.ico && `| IČO: ${settings.ico}`} {settings.dic && `| DIČ: ${settings.dic}`} {settings.icDph && `| IČ DPH: ${settings.icDph}`}
           </div>
         </div>
       );
-      import('html2pdf.js').then(html2pdf => {
-        try {
-          html2pdf.default()
-            .set({
-              margin: 0,
-              filename: 'ponuka-kvalitna.pdf',
-              image: { type: 'jpeg', quality: 1 },
-              html2canvas: { scale: 4, useCORS: true },
-              jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
-            })
-            .from(tempDiv.firstChild)
-            .save()
-            .then(() => {
-              root.unmount();
-              document.body.removeChild(tempDiv);
-            })
-            .catch((pdfErr: Error) => {
-              root.unmount();
-              document.body.removeChild(tempDiv);
-              alert('Chyba pri exporte PDF: ' + pdfErr);
-            });
-        } catch (html2pdfErr) {
-          root.unmount();
-          document.body.removeChild(tempDiv);
-          alert('Chyba pri generovaní PDF: ' + html2pdfErr);
-        }
+      
+      // Exportovať pomocou html2pdf
+      const html2pdfModule = await import('html2pdf.js');
+      const html2pdf = html2pdfModule.default;
+      
+      html2pdf().set({
+        margin: [15, 10, 15, 10],
+        filename: 'cenova-ponuka.pdf',
+        image: { type: 'jpeg', quality: 1 },
+        html2canvas: { 
+          scale: 4, 
+          useCORS: true,
+          allowTaint: true,
+          scrollY: 0
+        },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      })
+      .from(tempDiv.firstChild)
+      .save()
+      .then(() => {
+        root.unmount();
+        document.body.removeChild(tempDiv);
+      })
+      .catch((error: Error) => {
+        console.error('Chyba pri exporte PDF:', error);
+        root.unmount();
+        document.body.removeChild(tempDiv);
+        alert(`Chyba pri exporte PDF: ${error.message || error}`);
       });
-    } catch (err) {
-      alert('Chyba pri exporte PDF: ' + err);
+    } catch (error: unknown) {
+      console.error('Chyba:', error);
+      if (error instanceof Error) {
+        alert(`Chyba pri príprave PDF: ${error.message}`);
+      } else {
+        alert(`Chyba pri príprave PDF: ${String(error)}`);
+      }
     }
   }
 
@@ -908,8 +924,16 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       </div>
       {/* Poznámky a podmienky */}
       {(settings.pdfNote || tableNote) && (
-        <div style={{ color: '#444', fontSize: 12, margin: '22px 40px 0 40px', lineHeight: 1.5 }}>
-          {settings.pdfNote && <div style={{ marginBottom: 4 }}>{settings.pdfNote}</div>}
+        <div style={{ 
+          color: '#444', 
+          fontSize: 12, 
+          margin: '35px 40px 0 40px', 
+          lineHeight: 1.5, 
+          pageBreakInside: 'avoid', 
+          pageBreakBefore: 'auto',
+          breakInside: 'avoid'
+        }}>
+          {settings.pdfNote && <div style={{ marginBottom: 8 }}>{settings.pdfNote}</div>}
           {tableNote && <div>{tableNote}</div>}
         </div>
       )}
@@ -1185,15 +1209,15 @@ function SortableItem({
   let subtotalValue = 0;
   if (isSubtotal) {
     // Najdi poslední sekci před tímto subtotalem
-    let lastSectionIdx = -1;
+    let lastSectionIndex = -1;
     for (let j = index - 1; j >= 0; j--) {
       if (items[j].type === 'section') {
-        lastSectionIdx = j;
+        lastSectionIndex = j;
         break;
       }
     }
     // Spočítej sumu všech položek od poslední sekce po tento subtotal
-    for (let j = lastSectionIdx + 1; j < index; j++) {
+    for (let j = lastSectionIndex + 1; j < index; j++) {
       const row = items[j];
       if (row.type === 'item') {
         subtotalValue += Number(row.qty ?? 0) * Number(row.price ?? 0);
