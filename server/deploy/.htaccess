@@ -1,0 +1,40 @@
+# Aktivácia modulu rewrite
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /cenovky/api/
+  
+  # Ak požadovaný súbor alebo adresár neexistuje, presmeruj na index.js
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.js [QSA,L]
+</IfModule>
+
+# Nastavenie MIME typov
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType application/json .json
+</IfModule>
+
+# Nastavenie CORS hlavičiek
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin "*"
+  Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+  Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+</IfModule>
+
+# Nastavenie Node.js proxy cez Apache
+<IfModule mod_proxy.c>
+  <IfModule mod_proxy_http.c>
+    # Proxy pre Node.js aplikáciu bežiacu na porte 5000
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+  </IfModule>
+</IfModule>
+
+# Alebo použitie CGI pre spustenie Node.js
+<IfModule mod_cgi.c>
+  AddHandler cgi-script .js
+  Options +ExecCGI
+</IfModule> 

@@ -72,6 +72,24 @@ export interface OfferItem {
   tableNote: string;
   discount: number;
   showDetails?: boolean;
+  _id?: string;
+  title?: string;
+  isPublic?: boolean;
+  isShared?: boolean;
+}
+
+// Auth related types
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
 }
 
 // ... rest of the existing types ... 

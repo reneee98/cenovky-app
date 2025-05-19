@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import './App.css'
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -26,11 +27,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Notification } from './components/Notification';
 import type { OfferItem, OfferRow, CompanySettings, ItemRow, SectionRow, SubtotalRow, ClientDetails } from './types';
-import { FaTrash, FaRegClone, FaChevronRight, FaRegFileAlt } from 'react-icons/fa';
+import { FaTrash, FaRegClone, FaChevronRight, FaRegFileAlt, FaSignOutAlt } from 'react-icons/fa';
 import { FaUser } from 'react-icons/fa';
 import { exportOfferPdfWithPdfmake } from './utils/pdfmakeExport';
 import { createRoot } from 'react-dom/client';
-
+import { useAuth, AuthProvider } from './contexts/AuthContext';
+import Login from './components/Login';
+import Register from './components/Register';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // --- Funkcia na extrakciu bodov a generovanie čistého zoznamu ---
 function extractBullets(html: string): string {
@@ -140,6 +144,9 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
   onEdit: (id: string) => void;
   onClone: (id: string) => void;
 }) {
+  // Ensure offers is always an array
+  const safeOffers = Array.isArray(offers) ? offers : [];
+  
   return (
     <div className="offer-card offer-live-preview" style={{ maxWidth: 700, margin: '0 auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
@@ -149,7 +156,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
           + Nová ponuka
         </button>
       </div>
-      {offers.length === 0 && (
+      {safeOffers.length === 0 && (
         <div style={{ textAlign: 'center', color: '#888', padding: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
           <div style={{ fontSize: 17, fontWeight: 600 }}>Zatiaľ nemáte žiadne ponuky</div>
@@ -157,16 +164,17 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {offers.map((offer, idx) => (
+        {safeOffers.map((offer, idx) => (
           <div
             key={offer.id}
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: '#fafdff',
-              borderRadius: idx === 0 ? '10px 10px 0 0' : idx === offers.length-1 ? '0 0 10px 10px' : '0',
+              background: offer.isShared ? '#f0f7ff' : '#fafdff',
+              borderRadius: idx === 0 ? '10px 10px 0 0' : idx === safeOffers.length-1 ? '0 0 10px 10px' : '0',
               border: '1px solid #dde6f3',
+              borderLeft: offer.isShared ? '4px solid #2196f3' : '1px solid #dde6f3',
               borderTop: idx === 0 ? '1px solid #dde6f3' : 'none',
               padding: '20px 28px',
               marginBottom: 0,
@@ -180,40 +188,88 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
               e.currentTarget.style.background = '#f3f7fd';
               e.currentTarget.style.boxShadow = '0 4px 24px #2346a022';
               e.currentTarget.style.border = '1px solid #2346a0';
+              if (offer.isShared) {
+                e.currentTarget.style.borderLeft = '4px solid #2196f3';
+              }
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.background = '#fafdff';
+              e.currentTarget.style.background = offer.isShared ? '#f0f7ff' : '#fafdff';
               e.currentTarget.style.boxShadow = 'none';
               e.currentTarget.style.border = '1px solid #dde6f3';
+              if (offer.isShared) {
+                e.currentTarget.style.borderLeft = '4px solid #2196f3';
+              }
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-              <FaRegFileAlt style={{ fontSize: 22, color: '#2346a0', marginRight: 8 }} />
+              <FaRegFileAlt style={{ fontSize: 22, color: offer.isShared ? '#2196f3' : '#2346a0', marginRight: 8 }} />
               <div>
-                <div style={{ fontWeight: 700, color: '#2346a0', fontSize: 18, marginBottom: 2 }}>{offer.name}</div>
-                <div style={{ color: '#888', fontSize: 15 }}>{offer.total.toFixed(2)} €</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 700, color: offer.isShared ? '#2196f3' : '#2346a0', fontSize: 18, marginBottom: 2 }}>
+                    {offer.name}
+                  </div>
+                  {offer.isPublic && !offer.isShared && (
+                    <div style={{ 
+                      fontSize: 11, 
+                      background: '#2346a0', 
+                      color: 'white', 
+                      padding: '2px 8px', 
+                      borderRadius: 12,
+                      fontWeight: 600
+                    }}>
+                      Zdieľané
+                    </div>
+                  )}
+                  {offer.isShared && (
+                    <div style={{ 
+                      fontSize: 11, 
+                      background: '#2196f3', 
+                      color: 'white', 
+                      padding: '2px 8px', 
+                      borderRadius: 12,
+                      fontWeight: 600
+                    }}>
+                      Od iného používateľa
+                    </div>
+                  )}
+                </div>
+                <div style={{ color: '#888', fontSize: 15 }}>{(offer.total !== undefined ? offer.total.toFixed(2) : '0.00')} €</div>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <button
-                className="offer-row-icon"
-                title="Klonovať ponuku"
-                style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
-                onClick={e => { e.stopPropagation(); onClone(offer.id); }}
-              >
-                <FaRegClone style={{ fontSize: 17, color: '#bbb', transition: 'color 0.18s' }} />
-              </button>
-              <button
-                className="offer-row-icon"
-                title="Vymazať ponuku"
-                style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
-                onClick={e => { e.stopPropagation(); onDelete(offer.id); }}
-              >
-                <FaTrash style={{ fontSize: 17, color: '#ccc', transition: 'color 0.18s' }} />
-              </button>
+              {!offer.isShared && (
+                <>
+                  <button
+                    className="offer-row-icon"
+                    title="Klonovať ponuku"
+                    style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
+                    onClick={e => { e.stopPropagation(); onClone(offer.id); }}
+                  >
+                    <FaRegClone style={{ fontSize: 17, color: '#bbb', transition: 'color 0.18s' }} />
+                  </button>
+                  <button
+                    className="offer-row-icon"
+                    title="Vymazať ponuku"
+                    style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
+                    onClick={e => { e.stopPropagation(); onDelete(offer.id); }}
+                  >
+                    <FaTrash style={{ fontSize: 17, color: '#ccc', transition: 'color 0.18s' }} />
+                  </button>
+                </>
+              )}
+              {offer.isShared && (
+                <button
+                  className="offer-row-icon"
+                  title="Klonovať ponuku"
+                  style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', marginRight: 2, display: 'flex', alignItems: 'center' }}
+                  onClick={e => { e.stopPropagation(); onClone(offer.id); }}
+                >
+                  <FaRegClone style={{ fontSize: 17, color: '#bbb', transition: 'color 0.18s' }} />
+                </button>
+              )}
               <FaChevronRight style={{ fontSize: 22, color: '#bbb', marginLeft: 10, userSelect: 'none', transition: 'color 0.18s', cursor: 'pointer' }} />
             </div>
-            {idx < offers.length-1 && <div style={{ position: 'absolute', left: 28, right: 28, bottom: -1, height: 1, background: '#dde6f3' }} />}
+            {idx < safeOffers.length-1 && <div style={{ position: 'absolute', left: 28, right: 28, bottom: -1, height: 1, background: '#dde6f3' }} />}
           </div>
         ))}
       </div>
@@ -235,6 +291,7 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
   const [rowType, setRowType] = useState<'item' | 'section' | 'subtotal'>('item');
   const [tableNote, setTableNote] = useState(initial?.tableNote || '');
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [isPublic, setIsPublic] = useState(initial?.isPublic ?? false);
 
   // Polia pre novú položku
   const [rowTitle, setRowTitle] = useState('');
@@ -291,26 +348,33 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
   const vat = vatEnabled ? subtotalAfterDiscount * (vatRate / 100) : 0;
   const total = subtotalAfterDiscount + vat;
 
-  // Autosave při změně položek nebo základních údajů
+  // Autosave pri změně položek nebo základních údajů
   useEffect(() => {
     if (!name.trim() || items.length === 0) return;
-    onAutosave({
-      id: initial?.id || Date.now().toString(),
-      name,
-      date,
-      client,
-      clientDetails,
-      note,
-      total,
-      items,
-      vatEnabled,
-      vatRate,
-      tableNote,
-      showDetails,
-      discount
-    });
-    onNotify('Všetky zmeny boli automaticky uložené', 'success');
-  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails, discount]);
+    
+    // Použitie debounce pre autosave (počkať 2 sekundy po poslednej zmene)
+    const timer = setTimeout(() => {
+      console.log('Spúšťam autosave...');
+      onAutosave({
+        id: initial?.id || Date.now().toString(),
+        name,
+        date,
+        client,
+        clientDetails,
+        note,
+        total,
+        items,
+        vatEnabled,
+        vatRate,
+        tableNote,
+        showDetails,
+        discount,
+        isPublic
+      });
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails, discount, isPublic]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -337,7 +401,8 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       vatRate,
       tableNote,
       showDetails,
-      discount
+      discount,
+      isPublic
     });
     setSuccess(true);
     setTimeout(() => onBack(), 700);
@@ -893,6 +958,29 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
               style={{ width: 60, padding: '4px 8px', border: '1px solid #dde6f3', borderRadius: 4 }}
             />
             <span style={{ color: '#666' }}>%</span>
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>Zdieľanie ponuky:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <span style={{ fontSize: 14, color: '#888' }}>
+                Momentálne nedostupné
+              </span>
+              <div 
+                title="Funkcia zdieľania ponúk nie je momentálne k dispozícii"
+                style={{
+                  fontSize: 11, 
+                  background: '#999', 
+                  color: 'white', 
+                  padding: '2px 8px', 
+                  borderRadius: 12,
+                  fontWeight: 600
+                }}
+              >
+                Čoskoro
+              </div>
+            </label>
           </div>
         </div>
       </div>
@@ -1623,7 +1711,10 @@ function SettingsForm({ settings, onSave, onBack }: {
   );
 }
 
-function App() {
+// Importujem API služby
+import { offersService } from './services/api';
+
+function AppContent() {
   const [offers, setOffers] = useState<OfferItem[]>(() => {
     try {
       const data = localStorage.getItem('offers');
@@ -1656,9 +1747,14 @@ function App() {
   const [cloneData, setCloneData] = useState<OfferItem | undefined>(undefined);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'settings'>('list');
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+  const [syncActive, setSyncActive] = useState(false);
+  const [serverOffers, setServerOffers] = useState<OfferItem[]>([]);
 
   // Funkce pro autosave z editoru
-  const handleAutosave = (offer: OfferItem) => {
+  const handleAutosave = async (offer: OfferItem) => {
+    // Lokálne uloženie
     setOffers(prevOffers => {
       const newOffers = [...prevOffers];
       const idx = newOffers.findIndex(o => o.id === offer.id);
@@ -1670,6 +1766,61 @@ function App() {
       localStorage.setItem('offers', JSON.stringify(newOffers));
       return newOffers;
     });
+    
+    // Uloženie na server ak je prihlásený používateľ
+    if (currentUser) {
+      try {
+        setSyncActive(true);
+        console.log('Autosave: Odosielam ponuku na server', offer);
+        
+        // Nájdeme, či ponuka má už serverové ID
+        const serverOffer = serverOffers.find(so => 
+          (so.title === offer.name || so.name === offer.name) || 
+          (so._id && offer._id && so._id === offer._id)
+        );
+        
+        if (serverOffer && serverOffer._id) {
+          console.log('Autosave: Aktualizujem existujúcu ponuku ID:', serverOffer._id);
+          // Aktualizácia existujúcej ponuky
+          await offersService.updateOffer(serverOffer._id, offer)
+            .then((result) => {
+              console.log('Autosave: Ponuka automaticky aktualizovaná na serveri', result);
+              setNotification({ message: 'Ponuka bola automaticky uložená', type: 'success' });
+              // Aktualizujeme zoznam serverových ponúk
+              setServerOffers(prev => prev.map(item => 
+                item._id === serverOffer._id ? { ...result, _id: serverOffer._id } : item
+              ));
+            })
+            .catch(err => {
+              console.error('Chyba pri autosave na server:', err);
+              setNotification({ message: 'Chyba pri automatickom ukladaní na server: ' + (err.message || 'Neznáma chyba'), type: 'error' });
+            });
+        } else {
+          console.log('Autosave: Vytváram novú ponuku');
+          // Vytvorenie novej ponuky
+          await offersService.createOffer(offer)
+            .then(result => {
+              console.log('Autosave: Ponuka automaticky vytvorená na serveri', result);
+              setNotification({ message: 'Ponuka bola automaticky uložená', type: 'success' });
+              // Aktualizujeme zoznam serverových ponúk a lokálnu ponuku
+              offer._id = result._id; // Pridáme ID zo servera do lokálnej ponuky
+              setServerOffers(prev => [...prev, result]);
+            })
+            .catch(err => {
+              console.error('Chyba pri autosave na server:', err);
+              setNotification({ message: 'Chyba pri automatickom ukladaní na server: ' + (err.message || 'Neznáma chyba'), type: 'error' });
+            });
+        }
+      } catch (error) {
+        console.error('Chyba pri automatickom ukladaní:', error);
+        setNotification({ message: 'Chyba pri automatickom ukladaní: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
+      } finally {
+        setSyncActive(false);
+      }
+    } else {
+      console.log('Autosave: Užívateľ nie je prihlásený, ukladám len lokálne');
+      setNotification({ message: 'Zmeny boli uložené lokálne', type: 'info' });
+    }
   };
 
   // Funkce pro bezpečné ukládání do localStorage
@@ -1715,6 +1866,21 @@ function App() {
   };
 
   const handleEdit = (id: string) => {
+    const offer = offers.find(o => o.id === id);
+    if (!offer) return;
+    
+    // If this is a shared offer from another user, we should clone it instead of editing
+    if (offer.isShared) {
+      setNotification({ 
+        message: 'Zdieľané ponuky môžete len prezerať alebo klonovať, nie upravovať', 
+        type: 'info' 
+      });
+      // Instead of editing, show a read-only view or redirect to clone
+      // For now, let's clone it
+      handleClone(id);
+      return;
+    }
+    
     setEditId(id);
     setCloneData(undefined);
     setView('form');
@@ -1734,41 +1900,238 @@ function App() {
     const orig = offers.find(o => o.id === id);
     if (!orig) return;
     
+    const isFromAnotherUser = orig.isShared;
+    
     setCloneData({
       ...orig,
       id: Date.now().toString(),
       date: '',
-      name: orig.name + ' (kópia)',
+      name: orig.name + (isFromAnotherUser ? ' (kópia zdieľanej)' : ' (kópia)'),
       tableNote: orig.tableNote || '',
-    });
-    setEditId(null);
-    setView('form');
-    setNotification({ message: 'Ponuka bola naklonovaná, môžete ju upraviť', type: 'info' });
-  };
-
-  const handleSave = (offer: OfferItem) => {
-    setOffers(prevOffers => {
-      const newOffers = [...prevOffers];
-      const idx = newOffers.findIndex(o => o.id === offer.id);
-      
-      if (idx === -1) {
-        newOffers.push(offer);
-        if (saveToLocalStorage('offers', newOffers)) {
-          setNotification({ message: 'Nová ponuka bola úspešne vytvorená', type: 'success' });
-        }
-      } else {
-        newOffers[idx] = offer;
-        if (saveToLocalStorage('offers', newOffers)) {
-          setNotification({ message: 'Ponuka bola úspešne aktualizovaná', type: 'success' });
-        }
-      }
-      
-      return newOffers;
+      // Remove shared flags when cloning
+      isShared: false,
+      // Keep public flag only if it's our own offer being cloned
+      isPublic: isFromAnotherUser ? false : orig.isPublic
     });
     
     setEditId(null);
-    setCloneData(undefined);
-    setView('list');
+    setView('form');
+    
+    if (isFromAnotherUser) {
+      setNotification({ message: 'Vytvorili ste kópiu zdieľanej ponuky, môžete ju upraviť', type: 'info' });
+    } else {
+      setNotification({ message: 'Ponuka bola naklonovaná, môžete ju upraviť', type: 'info' });
+    }
+  };
+
+  // Načítanie ponúk zo servera pri prihlásení používateľa
+  useEffect(() => {
+    if (currentUser) {
+      const loadServerOffers = async () => {
+        try {
+          setSyncActive(true);
+          setNotification({ message: 'Načítavam ponuky zo servera...', type: 'info' });
+          console.log('Načítavam ponuky zo servera pre používateľa:', currentUser.email);
+          
+          // Načítanie vlastných ponúk používateľa
+          let userOffers: OfferItem[] = [];
+          try {
+            userOffers = await offersService.getOffers();
+            console.log('Načítané používateľove ponuky zo servera:', userOffers.length);
+          } catch (err) {
+            console.error('Chyba pri načítavaní ponúk:', err);
+            userOffers = []; // Fallback na prázdne pole v prípade chyby
+          }
+          
+          // Zabezpečíme, že máme vždy pole, nie undefined
+          const allServerOffers: OfferItem[] = userOffers || [];
+          
+          setServerOffers(allServerOffers);
+          
+          if (allServerOffers.length > 0) {
+            setNotification({ 
+              message: `Načítaných ${userOffers.length} ponúk`, 
+              type: 'success' 
+            });
+          } else {
+            setNotification({ message: 'Žiadne ponuky na serveri', type: 'info' });
+          }
+          
+          // Merge server offers with local offers
+          const mergedOffers: OfferItem[] = [...allServerOffers];
+          
+          // Add any local offers that don't exist on the server
+          let localOffers: OfferItem[] = [];
+          try {
+            const localData = localStorage.getItem('offers');
+            localOffers = localData ? JSON.parse(localData) : [];
+            // Kontrola, či je to pole
+            if (!Array.isArray(localOffers)) {
+              console.warn('Lokálne ponuky nie sú pole:', localOffers);
+              localOffers = [];
+            }
+          } catch (err) {
+            console.error('Chyba pri načítavaní lokálnych ponúk:', err);
+            localStorage.removeItem('offers'); // Vymažeme poškodený záznam
+            localOffers = [];
+          }
+
+          if (localOffers.length > 0) {
+            localOffers.forEach((localOffer: OfferItem) => {
+              // Check if this local offer exists on the server
+              const serverOffer = allServerOffers.find((so: OfferItem) => 
+                (so.title === localOffer.name || so.name === localOffer.name) ||
+                (so._id && localOffer._id && so._id === localOffer._id)
+              );
+              
+              // If not found on server, add the local one
+              if (!serverOffer) {
+                mergedOffers.push(localOffer);
+              }
+            });
+          }
+          
+          // Update local storage with the merged offers
+          localStorage.setItem('offers', JSON.stringify(mergedOffers));
+          setOffers(mergedOffers);
+          
+          console.log('Ponuky boli zlúčené (server + lokálne):', mergedOffers.length);
+        } catch (error) {
+          console.error('Chyba pri načítavaní ponúk zo servera:', error);
+          setNotification({ 
+            message: 'Chyba pri načítavaní ponúk: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), 
+            type: 'error' 
+          });
+          
+          // Fallback na lokálne ponuky v prípade chyby
+          try {
+            const localData = localStorage.getItem('offers');
+            const localOffers = localData ? JSON.parse(localData) : [];
+            if (Array.isArray(localOffers)) {
+              setOffers(localOffers);
+              console.log('Použité lokálne ponuky:', localOffers.length);
+            } else {
+              setOffers([]);
+            }
+          } catch (err) {
+            console.error('Chyba pri načítavaní lokálnych ponúk:', err);
+            setOffers([]);
+          }
+        } finally {
+          setSyncActive(false);
+        }
+      };
+      
+      loadServerOffers();
+    } else {
+      // Ak používateľ nie je prihlásený, načítaj aspoň lokálne ponuky
+      try {
+        const localData = localStorage.getItem('offers');
+        const localOffers = localData ? JSON.parse(localData) : [];
+        if (Array.isArray(localOffers)) {
+          setOffers(localOffers);
+          console.log('Použité lokálne ponuky (neprihlásený):', localOffers.length);
+        } else {
+          setOffers([]);
+        }
+      } catch (err) {
+        console.error('Chyba pri načítavaní lokálnych ponúk (neprihlásený):', err);
+        setOffers([]);
+      }
+    }
+  }, [currentUser]);
+
+  // Úprava funkcie handleSave, aby ukladala na server
+  const handleSave = async (offer: OfferItem) => {
+    try {
+      // Najprv lokálne uloženie
+      setOffers(prevOffers => {
+        const newOffers = [...prevOffers];
+        const idx = newOffers.findIndex(o => o.id === offer.id);
+        
+        if (idx === -1) {
+          newOffers.push(offer);
+        } else {
+          newOffers[idx] = offer;
+        }
+        
+        localStorage.setItem('offers', JSON.stringify(newOffers));
+        return newOffers;
+      });
+      
+      setNotification({ message: 'Ponuka bola uložená lokálne', type: 'success' });
+      console.log('Ponuka uložená lokálne', offer);
+      
+      // Potom uloženie na server ak je užívateľ prihlásený
+      if (currentUser) {
+        try {
+          setSyncActive(true);
+          setNotification({ message: 'Ukladám ponuku na server...', type: 'info' });
+          console.log('Ukladám ponuku na server...', offer);
+          
+          // Nájdeme, či ponuka má už serverové ID
+          const serverOffer = serverOffers.find((so: OfferItem) => 
+            (so.title === offer.name || so.name === offer.name) || 
+            (so._id && offer._id && so._id === offer._id)
+          );
+          
+          let result: any; // Explicitne typovanie výsledku
+          
+          if (serverOffer && serverOffer._id) {
+            console.log('Aktualizujem ponuku na serveri, ID:', serverOffer._id);
+            // Aktualizácia existujúcej ponuky
+            result = await offersService.updateOffer(serverOffer._id, offer);
+            setNotification({ message: 'Ponuka bola úspešne aktualizovaná na serveri', type: 'success' });
+            
+            // Aktualizujeme zoznam serverových ponúk
+            setServerOffers(prev => prev.map((item: OfferItem) => 
+              item._id === serverOffer._id ? { ...result, _id: serverOffer._id } : item
+            ));
+          } else {
+            console.log('Vytváram novú ponuku na serveri');
+            // Vytvorenie novej ponuky
+            result = await offersService.createOffer(offer);
+            setNotification({ message: 'Ponuka bola úspešne vytvorená na serveri', type: 'success' });
+            
+            // Pridáme ID zo servera do lokálnej ponuky
+            offer._id = result._id;
+            
+            // Aktualizujeme lokálne ponuky s ID zo servera
+            setOffers(prevOffers => {
+              const newOffers = [...prevOffers];
+              const idx = newOffers.findIndex(o => o.id === offer.id);
+              
+              if (idx !== -1) {
+                newOffers[idx] = {...newOffers[idx], _id: result._id};
+              }
+              localStorage.setItem('offers', JSON.stringify(newOffers));
+              return newOffers;
+            });
+            
+            // Aktualizujeme zoznam serverových ponúk
+            setServerOffers(prev => [...prev, result]);
+          }
+          
+          console.log('Server response:', result);
+        } catch (error) {
+          console.error('Chyba pri ukladaní ponuky na server:', error);
+          setNotification({ message: 'Chyba pri ukladaní na server: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
+          
+          // Return early without navigating back if there was a server error
+          return;
+        } finally {
+          setSyncActive(false);
+        }
+      } else {
+        console.log('Užívateľ nie je prihlásený, ponuka bola uložená len lokálne');
+      }
+      
+      // Návrat na zoznam ponúk
+      handleBack();
+    } catch (error) {
+      console.error('Neočakávaná chyba pri ukladaní:', error);
+      setNotification({ message: 'Neočakávaná chyba pri ukladaní: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
+    }
   };
 
   const handleSettingsSave = (newSettings: CompanySettings) => {
@@ -1779,8 +2142,62 @@ function App() {
     setSettingsOpen(false);
   };
 
+  const handleLogout = () => {
+    // Clear server offers when logging out
+    setServerOffers([]);
+    logout();
+    navigate('/login');
+  };
+
   return (
     <div style={{ background: '#f5f6fa', minHeight: '100vh', padding: 0 }}>
+      {/* User info and logout button */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'flex-end', 
+        padding: '20px 40px', 
+        background: 'white', 
+        boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            background: '#e8eefb',
+            color: '#2346a0',
+            fontWeight: 700
+          }}>
+            {currentUser?.name ? currentUser.name[0].toUpperCase() : 'U'}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{currentUser?.name || currentUser?.email}</div>
+            <div style={{ color: '#888', fontSize: 12 }}>{currentUser?.email}</div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            style={{ 
+              marginLeft: 16,
+              background: '#f3f3f7',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              color: '#444'
+            }}
+          >
+            <FaSignOutAlt />
+            <span style={{ fontSize: 14 }}>Odhlásiť</span>
+          </button>
+        </div>
+      </div>
+      
       {view === 'form' ? (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <OfferForm
@@ -1931,4 +2348,19 @@ function App() {
   );
 }
 
-export default App
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/" element={
+        <ProtectedRoute>
+          <AppContent />
+        </ProtectedRoute>
+      } />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default App;

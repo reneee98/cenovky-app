@@ -14,11 +14,15 @@ export const Notification: React.FC<NotificationProps> = ({
   duration = 3000 
 }) => {
   useEffect(() => {
+    // Persist error messages longer than regular notifications
+    const actualDuration = type === 'error' ? duration * 2 : duration;
+    console.log(`Notification shown: ${message} (${type}) - will disappear in ${actualDuration}ms`);
+    
     const timer = setTimeout(() => {
       onClose();
-    }, duration);
+    }, actualDuration);
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [duration, onClose, message, type]);
 
   const getBackgroundColor = () => {
     switch (type) {
@@ -26,6 +30,16 @@ export const Notification: React.FC<NotificationProps> = ({
       case 'error': return '#f44336';
       case 'info': return '#2196f3';
       default: return '#4caf50';
+    }
+  };
+
+  // Get icon based on notification type
+  const getIcon = () => {
+    switch (type) {
+      case 'success': return '✓';
+      case 'error': return '✕';
+      case 'info': return 'ℹ';
+      default: return '';
     }
   };
 
@@ -37,16 +51,31 @@ export const Notification: React.FC<NotificationProps> = ({
       transform: 'translateX(-50%)',
       backgroundColor: getBackgroundColor(),
       color: 'white',
-      padding: '12px 24px',
+      padding: '14px 28px',
       borderRadius: '8px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
       zIndex: 1000,
       display: 'flex',
       alignItems: 'center',
       gap: '12px',
-      animation: 'slideUp 0.3s ease-out'
+      animation: 'slideUp 0.3s ease-out',
+      minWidth: '300px',
+      maxWidth: '500px'
     }}>
-      <span>{message}</span>
+      <div style={{
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        background: 'rgba(255,255,255,0.2)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 'bold',
+        fontSize: '14px'
+      }}>
+        {getIcon()}
+      </div>
+      <span style={{ flex: 1, fontWeight: type === 'error' ? 'bold' : 'normal' }}>{message}</span>
       <button 
         onClick={onClose}
         style={{
