@@ -66,30 +66,58 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const result = e.target?.result as string;
+        
+        // Debug log pre typ súboru a veľkosť
+        console.log(`Logo file: ${file.name}, type: ${file.type}, size: ${Math.round(file.size / 1024)}KB`);
+        
+        // SVG konverzia
         if (file.type === 'image/svg+xml') {
           let svgText = '';
           if (result.startsWith('data:image/svg+xml;base64,')) {
+            console.log('Converting base64 encoded SVG to PNG...');
             svgText = atob(result.split(',')[1]);
           } else if (result.startsWith('data:image/svg+xml;utf8,')) {
+            console.log('Converting UTF8 encoded SVG to PNG...');
             svgText = result.split(',')[1];
           } else {
+            console.log('Converting raw SVG to PNG...');
             svgText = result;
           }
           try {
             const pngDataUrl = await convertSvgToPng(svgText);
             onChange(pngDataUrl);
-            setError('');
+            
+            // Úspešná konverzia ale s upozornením
+            setError('SVG logo bolo skonvertované na PNG pre lepšiu kompatibilitu s PDF exportom');
+            
+            // Log info o výsledku
+            const imgTest = new Image();
+            imgTest.onload = () => {
+              console.log(`Converted SVG to PNG: ${imgTest.naturalWidth}x${imgTest.naturalHeight}px`);
+            };
+            imgTest.src = pngDataUrl;
           } catch (svgErr: any) {
-            setError(svgErr.message || 'SVG logo sa nepodarilo skonvertovať na PNG.');
+            console.error('SVG conversion error:', svgErr);
+            setError(`SVG konverzia zlyhala: ${svgErr.message || 'Neznáma chyba'}`);
           }
-        } else {
+        } else if (['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+          // Kontrola veľkosti pre PNG/JPG
+          if (file.size > 200 * 1024) { // viac ako 200KB
+            setError(`Súbor loga je príliš veľký (${Math.round(file.size / 1024)}KB). Pre najlepšiu kompatibilitu s PDF exportom odporúčame veľkosť do 100KB.`);
+          }
+          
           onChange(result);
-          setError('');
+        } else {
+          // Iné formáty
+          onChange(result);
+          setError(`Formát ${file.type} môže mať obmedzenú podporu v PDF exporte. Odporúčame PNG formát.`);
         }
+        
         setLoading(false);
       };
       reader.readAsDataURL(file);
     } catch (e: any) {
+      console.error('File reading error:', e);
       setError('Chyba pri načítaní súboru: ' + e.message);
       setLoading(false);
     }

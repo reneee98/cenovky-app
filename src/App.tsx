@@ -500,6 +500,26 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
                            (today.getMonth() + 1).toString().padStart(2, '0') + '.' + 
                            today.getFullYear();
 
+      // Pre-load obrázku pred vykreslením PDF
+      let logoPromise = Promise.resolve<string | null>(null);
+      if (settings.logo && settings.logo.length > 0) {
+        logoPromise = new Promise<string | null>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            console.log("Logo loaded successfully:", img.naturalWidth, "x", img.naturalHeight);
+            resolve(settings.logo);
+          };
+          img.onerror = () => {
+            console.error("Failed to load logo image");
+            resolve(null);
+          };
+          img.src = settings.logo;
+        });
+      }
+      
+      // Počkaj na načítanie loga
+      const logoResult = await logoPromise;
+
       // Vytvoríme React root a vykreslíme PDF obsah
       const root = createRoot(tempDiv);
       root.render(
@@ -507,8 +527,22 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
           {/* Hlavička s logom */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '30px 40px 10px 40px' }}>
             <div style={{ maxWidth: 150, maxHeight: 50 }}>
-              {settings.logo ? <img src={settings.logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : 
-               <div style={{ fontSize: 28, fontWeight: 900, color: '#ccc' }}>LOGO</div>}
+              {logoResult ? (
+                <img 
+                  src={logoResult} 
+                  alt="Logo" 
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain'
+                  }} 
+                  crossOrigin="anonymous"
+                />
+              ) : (
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#ccc' }}>LOGO</div>
+              )}
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>{settings.email}</div>
@@ -735,12 +769,20 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       html2pdf().set({
         margin: [15, 10, 15, 10],
         filename: 'cenova-ponuka.pdf',
-        image: { type: 'jpeg', quality: 1 },
+        image: { 
+          type: 'jpeg', 
+          quality: 0.98 
+        },
         html2canvas: { 
           scale: 4, 
           useCORS: true,
           allowTaint: true,
-          scrollY: 0
+          scrollY: 0,
+          logging: true,
+          imageTimeout: 0, // neobmedzený čas pre načítanie obrázkov
+          onrendered: function(canvas: HTMLCanvasElement) {
+            console.log("Canvas rendered successfully");
+          }
         },
         jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -748,6 +790,7 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       .from(tempDiv.firstChild)
       .save()
       .then(() => {
+        console.log("PDF export successful");
         root.unmount();
         document.body.removeChild(tempDiv);
       })

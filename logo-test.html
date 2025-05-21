@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test loga v PDF exporte</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            background: #2346a0;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 20px 10px 20px 0;
+        }
+        .success {
+            color: green;
+            margin-top: 20px;
+        }
+        .error {
+            color: red;
+            margin-top: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .controls label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+        #pdf-content {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-top: 20px;
+            background: white;
+        }
+        .logo-container {
+            max-width: 150px; 
+            max-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            border: 1px dashed #ccc;
+            padding: 5px;
+        }
+        .logo-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        #logger {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test zobrazenia loga v PDF exporte</h1>
+    
+    <div class="controls">
+        <label for="logo-input">Vyber logo:</label>
+        <input type="file" id="logo-input" accept="image/*">
+        
+        <p>alebo</p>
+        
+        <label for="logo-url">Skopíruj base64 URL loga:</label>
+        <textarea id="logo-url" rows="3" style="width: 100%;" placeholder="data:image/..."></textarea>
+        
+        <button id="load-logo">Načítať logo</button>
+        <button id="load-storage">Načítať logo z LocalStorage</button>
+        <button id="clear-logo">Vyčistiť</button>
+    </div>
+    
+    <div id="pdf-content">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="logo-container" id="logo-preview">
+                <!-- Logo sa zobrazí tu -->
+                <div style="color: #bbb; font-size: 28px; font-weight: 900;">LOGO</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: 700; font-size: 12px; margin-bottom: 2px;">email@example.com</div>
+                <div style="color: #666; font-size: 11px;">+421 900 123 456 | www.example.com</div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <h2>Cenová ponuka</h2>
+            <p>Toto je testovací obsah pre PDF export.</p>
+        </div>
+    </div>
+    
+    <button id="export-pdf">Exportovať PDF</button>
+    <button id="debug-logo">Debug informácie o logu</button>
+    
+    <div id="logger"></div>
+    
+    <script>
+        // Funkcie pre logovacie okno
+        function log(message, type = 'info') {
+            const logger = document.getElementById('logger');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logger.appendChild(entry);
+            logger.scrollTop = logger.scrollHeight;
+        }
+        
+        // Načítanie loga z file inputu
+        document.getElementById('logo-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const dataUrl = event.target.result;
+                    displayLogo(dataUrl);
+                    log(`Logo načítané zo súboru: ${file.name} (${file.type}), veľkosť: ${Math.round(file.size / 1024)} KB`);
+                    document.getElementById('logo-url').value = dataUrl;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Načítanie loga z textarea
+        document.getElementById('load-logo').addEventListener('click', function() {
+            const dataUrl = document.getElementById('logo-url').value.trim();
+            if (dataUrl) {
+                displayLogo(dataUrl);
+                log(`Logo načítané z URL, dĺžka: ${dataUrl.length} znakov`);
+            } else {
+                log('Žiadne URL nebolo zadané', 'error');
+            }
+        });
+        
+        // Načítanie loga z LocalStorage
+        document.getElementById('load-storage').addEventListener('click', function() {
+            const settings = localStorage.getItem('companySettings');
+            if (settings) {
+                try {
+                    const parsedSettings = JSON.parse(settings);
+                    if (parsedSettings.logo) {
+                        displayLogo(parsedSettings.logo);
+                        document.getElementById('logo-url').value = parsedSettings.logo;
+                        log(`Logo načítané z LocalStorage, dĺžka: ${parsedSettings.logo.length} znakov`);
+                    } else {
+                        log('V LocalStorage nie je uložené žiadne logo', 'error');
+                    }
+                } catch (err) {
+                    log(`Chyba pri načítaní z LocalStorage: ${err.message}`, 'error');
+                }
+            } else {
+                log('V LocalStorage nie sú uložené žiadne nastavenia', 'error');
+            }
+        });
+        
+        // Vyčistenie loga
+        document.getElementById('clear-logo').addEventListener('click', function() {
+            document.getElementById('logo-preview').innerHTML = '<div style="color: #bbb; font-size: 28px; font-weight: 900;">LOGO</div>';
+            document.getElementById('logo-url').value = '';
+            log('Logo bolo vyčistené');
+        });
+        
+        // Debug informácie o logu
+        document.getElementById('debug-logo').addEventListener('click', function() {
+            const logoContainer = document.getElementById('logo-preview');
+            const img = logoContainer.querySelector('img');
+            
+            if (img) {
+                log(`Logo rozmery: ${img.naturalWidth}x${img.naturalHeight}px`);
+                
+                const dataUrl = img.src;
+                log(`Logo typ: ${dataUrl.substring(5, dataUrl.indexOf(';'))}`);
+                log(`Logo veľkosť: ${Math.round(dataUrl.length / 1024)} KB`);
+                
+                // Kontrola, či je to base64
+                if (dataUrl.includes(';base64,')) {
+                    log('Logo je encodované ako base64');
+                } else {
+                    log('Logo nie je base64 encoded', 'warn');
+                }
+                
+                // Kontrola, či je to SVG
+                if (dataUrl.startsWith('data:image/svg')) {
+                    log('Logo je formát SVG, ktorý môže spôsobovať problémy v PDF', 'warn');
+                }
+            } else {
+                log('Žiadne logo nie je zobrazené', 'error');
+            }
+        });
+        
+        // Export PDF
+        document.getElementById('export-pdf').addEventListener('click', function() {
+            const element = document.getElementById('pdf-content');
+            const opt = {
+                margin: [10, 10],
+                filename: 'test-logo.pdf',
+                image: { type: 'jpeg', quality: 1 },
+                html2canvas: { 
+                    scale: 4,
+                    useCORS: true,
+                    allowTaint: true,
+                    scrollY: 0
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            log('Začínam export PDF...');
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                log('PDF bolo úspešne vytvorené', 'success');
+            }).catch(err => {
+                log(`Chyba pri exporte PDF: ${err.message}`, 'error');
+                console.error('Export error:', err);
+            });
+        });
+        
+        // Zobrazenie loga
+        function displayLogo(dataUrl) {
+            const logoContainer = document.getElementById('logo-preview');
+            logoContainer.innerHTML = '';
+            
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.alt = 'Logo';
+            
+            img.onload = function() {
+                log(`Logo načítané, rozmery: ${this.naturalWidth}x${this.naturalHeight}px`);
+            };
+            
+            img.onerror = function() {
+                log('Chyba pri načítaní obrázka loga', 'error');
+            };
+            
+            logoContainer.appendChild(img);
+        }
+    </script>
+</body>
+</html> 
