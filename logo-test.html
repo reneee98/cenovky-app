@@ -210,27 +210,110 @@
         // Export PDF
         document.getElementById('export-pdf').addEventListener('click', function() {
             const element = document.getElementById('pdf-content');
-            const opt = {
-                margin: [10, 10],
-                filename: 'test-logo.pdf',
-                image: { type: 'jpeg', quality: 1 },
-                html2canvas: { 
-                    scale: 4,
-                    useCORS: true,
-                    allowTaint: true,
-                    scrollY: 0
-                },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
             
-            log('Začínam export PDF...');
+            // Pre-process logo to ensure it's loaded and visible
+            const logoImg = document.querySelector('#logo-preview img');
+            if (!logoImg) {
+                log('Žiadne logo nie je nastavené', 'warn');
+            } else {
+                // Force re-rendering of the logo
+                const logoSrc = logoImg.src;
+                log(`Príprava loga pre export, dĺžka src: ${logoSrc.length} znakov`);
+                
+                // Create a new image element and replace the existing one
+                const newImg = new Image();
+                newImg.crossOrigin = 'anonymous';
+                newImg.onload = function() {
+                    log(`Logo pre-loaded: ${this.naturalWidth}x${this.naturalHeight}px`);
+                    
+                    // Force rendering to canvas (pre-rasterize for better PDF compatibility)
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = this.naturalWidth || 300;
+                        canvas.height = this.naturalHeight || 100;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            // White background to avoid transparency issues
+                            ctx.fillStyle = 'white';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(this, 0, 0);
+                            
+                            const dataUrl = canvas.toDataURL('image/png');
+                            
+                            // Replace the original image
+                            logoImg.src = dataUrl;
+                            logoImg.style.maxWidth = '100%';
+                            logoImg.style.maxHeight = '100%';
+                            logoImg.style.display = 'block';
+                            
+                            log('Logo bolo prekonvertované pre PDF export');
+                            
+                            // Now start the PDF export
+                            startPdfExport();
+                        } else {
+                            log('Nepodarilo sa vytvoriť canvas kontext', 'error');
+                            startPdfExport();
+                        }
+                    } catch (e) {
+                        log(`Chyba pri predspracovaní loga: ${e.message}`, 'error');
+                        startPdfExport();
+                    }
+                };
+                
+                newImg.onerror = function() {
+                    log('Chyba pri načítaní loga pre predspracovanie', 'error');
+                    startPdfExport();
+                };
+                
+                // Start loading
+                newImg.src = logoSrc;
+            }
             
-            html2pdf().set(opt).from(element).save().then(() => {
-                log('PDF bolo úspešne vytvorené', 'success');
-            }).catch(err => {
-                log(`Chyba pri exporte PDF: ${err.message}`, 'error');
-                console.error('Export error:', err);
-            });
+            function startPdfExport() {
+                const opt = {
+                    margin: [10, 10],
+                    filename: 'test-logo.pdf',
+                    image: { type: 'jpeg', quality: 0.95 },
+                    html2canvas: { 
+                        scale: 4,
+                        useCORS: true,
+                        allowTaint: true,
+                        scrollY: 0,
+                        logging: true,
+                        imageTimeout: 30000,
+                        onclone: function(clonedDoc) {
+                            const img = clonedDoc.querySelector('#logo-preview img');
+                            if (img) {
+                                log(`Cloning image with src length: ${img.src.length} characters`);
+                                // Force image to be loaded in the clone
+                                img.style.maxWidth = '100%';
+                                img.style.maxHeight = '100%';
+                                img.style.width = 'auto';
+                                img.style.height = 'auto';
+                                img.style.objectFit = 'contain';
+                                img.style.display = 'block';
+                            } else {
+                                log('No logo image found in clone', 'warn');
+                            }
+                        }
+                    },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                log('Začínam export PDF...');
+                
+                html2pdf().set(opt).from(element).save().then(() => {
+                    log('PDF bolo úspešne vytvorené', 'success');
+                }).catch(err => {
+                    log(`Chyba pri exporte PDF: ${err.message}`, 'error');
+                    console.error('Export error:', err);
+                });
+            }
+            
+            // If no logo, start PDF export directly
+            if (!logoImg) {
+                startPdfExport();
+            }
         });
         
         // Zobrazenie loga
@@ -242,8 +325,37 @@
             img.src = dataUrl;
             img.alt = 'Logo';
             
+            // Ensure logo image has proper styling for PDF export
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            img.style.display = 'block';
+            
             img.onload = function() {
                 log(`Logo načítané, rozmery: ${this.naturalWidth}x${this.naturalHeight}px`);
+                
+                // Check logo format to detect potential PDF issues
+                if (dataUrl.startsWith('data:image/svg')) {
+                    log('Detekované SVG logo - môže spôsobovať problémy v PDF exporte', 'warn');
+                    
+                    // Pre-convert SVG to PNG for better PDF compatibility
+                    const canvas = document.createElement('canvas');
+                    canvas.width = this.naturalWidth || 300;
+                    canvas.height = this.naturalHeight || 100;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.drawImage(img, 0, 0);
+                        try {
+                            const pngDataUrl = canvas.toDataURL('image/png');
+                            if (pngDataUrl && pngDataUrl !== 'data:,') {
+                                log('SVG bolo automaticky konvertované na PNG pre lepšiu kompatibilitu', 'info');
+                                img.src = pngDataUrl;
+                            }
+                        } catch (e) {
+                            log('SVG konverzia zlyhala: ' + e.message, 'error');
+                        }
+                    }
+                }
             };
             
             img.onerror = function() {

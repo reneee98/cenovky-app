@@ -1,64 +1,46 @@
-# Riešenie problémov s zobrazením loga v PDF exporte
+# Riešenie problémov so zobrazením loga v PDF exporte
 
-Ak sa logo nezobrazuje správne v exportovanom PDF, môžete vyskúšať nasledujúce riešenia:
+## Zhrnutie problému
+Niektoré logá sa nemusia správne zobrazovať v PDF exporte, najmä SVG formáty alebo obrázky s transparentnosťou.
 
-## Kontrolný zoznam pre správne zobrazenie loga
+## Riešené problémy
 
-1. **Formát loga**
-   - Pre najlepšiu kompatibilitu používajte formáty PNG alebo JPG namiesto SVG
-   - SVG formát môže spôsobiť problémy pri konverzii do PDF
+### 1. SVG logá nie sú viditeľné v PDF
+**Riešenie:**
+- SVG logá sa automaticky konvertujú na PNG formát pre lepšiu kompatibilitu
+- Nová implementácia používa canvas na konverziu na rozlíšení plátna 
 
-2. **Veľkosť súboru**
-   - Optimalizujte veľkosť súboru loga (ideálne pod 100 KB)
-   - Príliš veľké súbory môžu spôsobiť problémy pri PDF exporte
+### 2. Logá s transparentným pozadím
+**Riešenie:**
+- Pri konverzii sa teraz pridáva biele pozadie pre lepšiu viditeľnosť
 
-3. **Rozmery loga**
-   - Používajte logo s primeranými rozmermi (napr. 300x100 pixelov)
-   - Príliš veľké rozmery môžu spôsobiť problémy s pamäťou v prehliadači
+### 3. Postupnosť spracovania loga pri nahrávaní:
+1. Nahratie súboru obrázka
+2. Detekcia formátu (SVG/PNG/JPG/WebP)
+3. Pre SVG súbory - automatická konverzia na PNG formát
+4. Uloženie base64 reťazca do localStorage/companySettings
+5. Pri generovaní PDF - opätovná validácia, že logo je v kompatibilnom formáte
 
-## Ako otestovať a vyriešiť problém
+### 4. Nastavenie parametrov html2pdf pre lepšie zobrazenie loga:
+- Zvýšené rozlíšenie (scale: 4)
+- Zapnuté CORS/allowTaint pre externé zdroje
+- Pridané extra spracovanie pre logoContainer pri klonovaní DOM
 
-1. **Vyčistite LocalStorage a nahrajte nové logo**
-   - Otvorte súbor `force-reset.html` v prehliadači
-   - Kliknite na "Vymazať všetky údaje" a potom obnovte aplikáciu
-   - Prejdite do Nastavenia > Logo firmy a nahrajte logo znova
+## Ako otestovať, či logo funguje
+1. Otvorte testovací súbor `logo-test.html`
+2. Nahrajte logo (SVG/PNG/JPG)
+3. Kliknite na "Debug informácie o logu" pre analýzu
+4. Vyskúšajte "Exportovať PDF" a skontrolujte výsledok
+5. Pri problémoch skontrolujte logovanie v konzole prehliadača
 
-2. **Použite testovací nástroj pre logo**
-   - Otvorte súbor `logo-test.html` v prehliadači
-   - Kliknite na "Načítať logo z LocalStorage" 
-   - Kliknite na "Debug informácie o logu" pre zobrazenie detailov
-   - Vyskúšajte export do PDF
+## Odporúčania pre budúce logá
+- Preferujte PNG formát s rozlíšením aspoň 200×60px
+- Vyhnite sa veľmi komplexným SVG súborom
+- Maximálna odporúčaná veľkosť je 100KB
+- Ak používate SVG, uistite sa, že neobsahuje externé zdroje a odkazy
 
-3. **Konvertujte SVG na PNG**
-   - Ak používate SVG logo, konvertujte ho na PNG formát
-   - Môžete použiť online nástroje ako [SVG2PNG](https://svgtopng.com)
-   - Alebo použite náš testovací nástroj, ktorý vykoná konverziu automaticky
-
-## Dodatočné tipy
-
-1. **Uistite sa, že logo je platný obrázok**
-   - Skontrolujte, či sa logo správne zobrazuje v prehliadači
-   - Skúste obrázok otvoriť v novom okne/karte prehliadača
-
-2. **Vyskúšajte iný prehliadač**
-   - Niekedy môže problém s exportom PDF súvisieť s konkrétnym prehliadačom
-   - Odporúčame Chrome alebo Firefox pre najlepšiu kompatibilitu
-
-## Technické detaily pre vývojárov
-
-PDF export používa knižnicu `html2pdf.js`, ktorá má tieto obmedzenia:
-
-- Obrázky musia byť načítané pred generovaním PDF
-- SVG formát nie je plne podporovaný v PDF exporte
-- Veľké obrázky/logá môžu spôsobiť problémy s pamäťou
-
-Ak problém pretrváva, vyskúšajte:
-
-```javascript
-// V konzole prehliadača
-// 1. Uložte si aktuálne logo
-const settings = JSON.parse(localStorage.getItem('companySettings'));
-const logo = settings.logo;
-// 2. Skontrolujte typ loga
-console.log('Logo type:', logo ? logo.substring(0, 30) + '...' : 'not set');
-``` 
+## Technické poznámky pre vývojárov
+- HTML2PDF má problémy s renderovaním SVG a niektorých typov PNG s transparentnosťou
+- Pri konverzii SVG na PNG sa používa canvas, ktorý má isté limitácie pre komplexné SVG
+- Pri implementácii v hlavnej aplikácii sme pridali dodatočné vrstvenie canvasu
+- LogoUpload komponent bol aktualizovaný a riadi celý proces konverzie 

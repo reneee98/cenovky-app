@@ -223,16 +223,58 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
 // Pridám nový komponent na zobrazenie loga
 function LogoDisplay({ value }: { value: string }) {
   const [imgInfo, setImgInfo] = React.useState<{w:number, h:number}|null>(null);
+  const [processedSrc, setProcessedSrc] = React.useState<string>(value);
   const isSvg = value.startsWith('data:image/svg');
+
   React.useEffect(() => {
-    if (!isSvg) {
+    // Convert SVG to PNG if needed
+    if (isSvg) {
       const img = new window.Image();
-      img.onload = () => setImgInfo({w: img.naturalWidth, h: img.naturalHeight});
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          // Convert to canvas to ensure PDF compatibility
+          const canvas = document.createElement('canvas');
+          // Make sure canvas is large enough
+          canvas.width = img.naturalWidth || 300;
+          canvas.height = img.naturalHeight || 100;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            const pngUrl = canvas.toDataURL('image/png');
+            if (pngUrl && pngUrl !== 'data:,') {
+              setProcessedSrc(pngUrl);
+              console.log('SVG converted to PNG for PDF compatibility');
+              
+              // Get size of the processed image
+              const processedImg = new window.Image();
+              processedImg.onload = () => {
+                setImgInfo({w: processedImg.naturalWidth, h: processedImg.naturalHeight});
+              };
+              processedImg.src = pngUrl;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to convert SVG to PNG:', e);
+        }
+      };
+      img.onerror = () => {
+        console.error('Error loading SVG image');
+      };
       img.src = value;
     } else {
-      setImgInfo(null);
+      // For non-SVG images, just set the source and load image info
+      setProcessedSrc(value);
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => setImgInfo({w: img.naturalWidth, h: img.naturalHeight});
+      img.onerror = () => console.error('Error loading image');
+      img.src = value;
     }
-  }, [value]);
+  }, [value, isSvg]);
+
   return (
     <div style={{
       width: '100%',
@@ -248,7 +290,7 @@ function LogoDisplay({ value }: { value: string }) {
       position: 'relative'
     }}>
       <img
-        src={value}
+        src={processedSrc}
         alt="Logo"
         style={{
           maxWidth: '100%',
@@ -262,7 +304,7 @@ function LogoDisplay({ value }: { value: string }) {
         }}
         draggable={false}
       />
-      {!isSvg && imgInfo && (imgInfo.w < 200 || imgInfo.h < 60) && (
+      {imgInfo && (imgInfo.w < 200 || imgInfo.h < 60) && (
         <div style={{
           position: 'absolute',
           bottom: 2,

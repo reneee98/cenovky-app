@@ -499,26 +499,53 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       const formattedDate = today.getDate().toString().padStart(2, '0') + '.' + 
                            (today.getMonth() + 1).toString().padStart(2, '0') + '.' + 
                            today.getFullYear();
-
-      // Pre-load obrázku pred vykreslením PDF
-      let logoPromise = Promise.resolve<string | null>(null);
+      
+      // Pre-process logo to ensure it's properly loaded and displayed in PDF
+      let logoResult = null;
       if (settings.logo && settings.logo.length > 0) {
-        logoPromise = new Promise<string | null>((resolve) => {
+        const logoPromise = new Promise<string | null>((resolve) => {
           const img = new Image();
-          img.onload = () => {
+          img.onload = async () => {
             console.log("Logo loaded successfully:", img.naturalWidth, "x", img.naturalHeight);
-            resolve(settings.logo);
+            
+            try {
+              // Force rendering through canvas for better PDF compatibility
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(img.naturalWidth, 300);
+              canvas.height = Math.max(img.naturalHeight, 100);
+              const ctx = canvas.getContext('2d');
+              
+              if (ctx) {
+                // White background for better handling of transparent logos
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                
+                const pngUrl = canvas.toDataURL('image/png');
+                console.log('Logo processed for PDF export');
+                resolve(pngUrl);
+              } else {
+                resolve(settings.logo);
+              }
+            } catch (e) {
+              console.error('Error processing logo:', e);
+              resolve(settings.logo);
+            }
           };
+          
           img.onerror = () => {
             console.error("Failed to load logo image");
             resolve(null);
           };
+          
           img.src = settings.logo;
+          // Set timeout to avoid hanging forever
+          setTimeout(() => resolve(settings.logo), 3000);
         });
+        
+        // Počkaj na načítanie loga
+        logoResult = await logoPromise;
       }
-      
-      // Počkaj na načítanie loga
-      const logoResult = await logoPromise;
 
       // Vytvoríme React root a vykreslíme PDF obsah
       const root = createRoot(tempDiv);
@@ -526,7 +553,7 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
         <div style={{ fontFamily: 'Noto Sans, Arial, sans-serif', padding: 0, margin: 0, background: '#fff' }}>
           {/* Hlavička s logom */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '30px 40px 10px 40px' }}>
-            <div style={{ maxWidth: 150, maxHeight: 50 }}>
+            <div style={{ maxWidth: 150, maxHeight: 50 }} className="company-logo">
               {logoResult ? (
                 <img 
                   src={logoResult} 
@@ -536,7 +563,8 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
                     maxHeight: '100%',
                     width: 'auto',
                     height: 'auto',
-                    objectFit: 'contain'
+                    objectFit: 'contain',
+                    display: 'block'
                   }} 
                   crossOrigin="anonymous"
                 />
@@ -774,15 +802,12 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
           quality: 0.98 
         },
         html2canvas: { 
-          scale: 4, 
+          scale: 4,
           useCORS: true,
           allowTaint: true,
           scrollY: 0,
           logging: true,
-          imageTimeout: 0, // neobmedzený čas pre načítanie obrázkov
-          onrendered: function(canvas: HTMLCanvasElement) {
-            console.log("Canvas rendered successfully");
-          }
+          imageTimeout: 0 // neobmedzený čas pre načítanie obrázkov
         },
         jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -793,19 +818,20 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
         console.log("PDF export successful");
         root.unmount();
         document.body.removeChild(tempDiv);
+        onNotify('PDF bolo úspešne vygenerované', 'success');
       })
       .catch((error: Error) => {
         console.error('Chyba pri exporte PDF:', error);
         root.unmount();
         document.body.removeChild(tempDiv);
-        alert(`Chyba pri exporte PDF: ${error.message || error}`);
+        onNotify(`Chyba pri exporte PDF: ${error.message || error}`, 'error');
       });
     } catch (error: unknown) {
       console.error('Chyba:', error);
       if (error instanceof Error) {
-        alert(`Chyba pri príprave PDF: ${error.message}`);
+        onNotify(`Chyba pri príprave PDF: ${error.message}`, 'error');
       } else {
-        alert(`Chyba pri príprave PDF: ${String(error)}`);
+        onNotify(`Chyba pri príprave PDF: ${String(error)}`, 'error');
       }
     }
   }
@@ -1810,6 +1836,7 @@ function AppContent(): JSX.Element {
   const [syncActive, setSyncActive] = useState(false);
   const [serverOffers, setServerOffers] = useState<OfferItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
 
   const handleNew = () => {
     setEditId(null);
