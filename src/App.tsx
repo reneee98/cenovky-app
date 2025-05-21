@@ -147,6 +147,17 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
   // Ensure offers is always an array
   const safeOffers = Array.isArray(offers) ? offers : [];
   
+  // Odstráň duplikáty podľa localId alebo _id (uprednostni serverovú verziu)
+  const uniqueOffersMap = new Map<string, OfferItem>();
+  for (const offer of safeOffers) {
+    const key = offer.localId || offer._id || offer.id;
+    // Ak už existuje, uprednostni ten, ktorý má _id (serverová verzia)
+    if (!uniqueOffersMap.has(key) || (offer._id && !uniqueOffersMap.get(key)?._id)) {
+      uniqueOffersMap.set(key, offer);
+    }
+  }
+  const uniqueOffers = Array.from(uniqueOffersMap.values());
+  
   return (
     <div className="offer-card offer-live-preview" style={{ maxWidth: 700, margin: '0 auto', background: '#fff', borderRadius: 16, boxShadow: '0 8px 48px #0002', padding: 40, fontFamily: 'Noto Sans, Arial, Helvetica, sans-serif', color: '#222' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
@@ -156,7 +167,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
           + Nová ponuka
         </button>
       </div>
-      {safeOffers.length === 0 && (
+      {uniqueOffers.length === 0 && (
         <div style={{ textAlign: 'center', color: '#888', padding: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
           <div style={{ fontSize: 17, fontWeight: 600 }}>Zatiaľ nemáte žiadne ponuky</div>
@@ -164,7 +175,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {safeOffers.map((offer, idx) => (
+        {uniqueOffers.map((offer, idx) => (
           <div
             key={offer.id}
             style={{
@@ -172,7 +183,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
               alignItems: 'center',
               justifyContent: 'space-between',
               background: offer.isShared ? '#f0f7ff' : '#fafdff',
-              borderRadius: idx === 0 ? '10px 10px 0 0' : idx === safeOffers.length-1 ? '0 0 10px 10px' : '0',
+              borderRadius: idx === 0 ? '10px 10px 0 0' : idx === uniqueOffers.length-1 ? '0 0 10px 10px' : '0',
               border: '1px solid #dde6f3',
               borderLeft: offer.isShared ? '4px solid #2196f3' : '1px solid #dde6f3',
               borderTop: idx === 0 ? '1px solid #dde6f3' : 'none',
@@ -233,7 +244,24 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
                     </div>
                   )}
                 </div>
-                <div style={{ color: '#888', fontSize: 15 }}>{(offer.total !== undefined ? offer.total.toFixed(2) : '0.00')} €</div>
+                <div style={{ color: '#888', fontSize: 15 }}>
+                  {(() => {
+                    // Enhanced price formatting with better type handling
+                    const price = offer.total;
+                    
+                    // Debug price value for this specific display
+                    console.log(`Displaying price for ${offer.name}: ${price} (${typeof price})`);
+                    
+                    if (typeof price === 'number' && !isNaN(price)) {
+                      return price.toFixed(2) + ' €';
+                    } else if (typeof price === 'string') {
+                      const numValue = parseFloat(price);
+                      return !isNaN(numValue) ? numValue.toFixed(2) + ' €' : '0.00 €';
+                    } else {
+                      return '0.00 €';
+                    }
+                  })()}
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -269,7 +297,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
               )}
               <FaChevronRight style={{ fontSize: 22, color: '#bbb', marginLeft: 10, userSelect: 'none', transition: 'color 0.18s', cursor: 'pointer' }} />
             </div>
-            {idx < safeOffers.length-1 && <div style={{ position: 'absolute', left: 28, right: 28, bottom: -1, height: 1, background: '#dde6f3' }} />}
+            {idx < uniqueOffers.length-1 && <div style={{ position: 'absolute', left: 28, right: 28, bottom: -1, height: 1, background: '#dde6f3' }} />}
           </div>
         ))}
       </div>
@@ -278,7 +306,7 @@ function OfferList({ offers, onNew, onSelect, onDelete, onEdit, onClone }: {
 }
 
 // Komponent pre formulár ponuky (rozšírený)
-function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, setSettings }: { onBack: () => void, onSave: (offer: OfferItem) => void, onAutosave: (offer: OfferItem) => void, initial?: OfferItem, onNotify: (msg: string, type: 'success' | 'error' | 'info') => void, settings: CompanySettings, setSettings: React.Dispatch<React.SetStateAction<CompanySettings>> }) {
+function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }: { onBack: () => void, onSave: (offer: OfferItem) => void, initial?: OfferItem, onNotify: (msg: string, type: 'success' | 'error' | 'info') => void, settings: CompanySettings, setSettings: React.Dispatch<React.SetStateAction<CompanySettings>> }) {
   const [name, setName] = useState(initial?.name || '');
   const [date, setDate] = useState(initial?.date || '');
   const [client, setClient] = useState(initial?.client || '');
@@ -348,34 +376,6 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
   const vat = vatEnabled ? subtotalAfterDiscount * (vatRate / 100) : 0;
   const total = subtotalAfterDiscount + vat;
 
-  // Autosave pri změně položek nebo základních údajů
-  useEffect(() => {
-    if (!name.trim() || items.length === 0) return;
-    
-    // Použitie debounce pre autosave (počkať 2 sekundy po poslednej zmene)
-    const timer = setTimeout(() => {
-      console.log('Spúšťam autosave...');
-      onAutosave({
-        id: initial?.id || Date.now().toString(),
-        name,
-        date,
-        client,
-        clientDetails,
-        note,
-        total,
-        items,
-        vatEnabled,
-        vatRate,
-        tableNote,
-        showDetails,
-        discount,
-        isPublic
-      });
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, [name, date, client, clientDetails, note, items, vatEnabled, vatRate, tableNote, showDetails, discount, isPublic]);
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -388,8 +388,18 @@ function OfferForm({ onBack, onSave, onAutosave, initial, onNotify, settings, se
       setError('Pridajte aspoň jednu položku.');
       return;
     }
+    
+    // Zachovaj ID, _id a localId z pôvodnej ponuky (ak ide o editáciu)
+    const id = initial?.id || Date.now().toString();
+    const _id = initial?._id;
+    const localId = initial?.localId || id;
+    
+    console.log('Form submitting with IDs:', { id, _id, localId, isEdit: !!initial });
+    
     onSave({
-      id: initial?.id || Date.now().toString(),
+      id,
+      _id,
+      localId,
       name,
       date,
       client,
@@ -1714,7 +1724,12 @@ function SettingsForm({ settings, onSave, onBack }: {
 // Importujem API služby
 import { offersService } from './services/api';
 
-function AppContent() {
+// Add type for server offer
+interface ServerOffer extends OfferItem {
+  _id: string;
+}
+
+function AppContent(): JSX.Element {
   const [offers, setOffers] = useState<OfferItem[]>(() => {
     try {
       const data = localStorage.getItem('offers');
@@ -1751,89 +1766,7 @@ function AppContent() {
   const navigate = useNavigate();
   const [syncActive, setSyncActive] = useState(false);
   const [serverOffers, setServerOffers] = useState<OfferItem[]>([]);
-
-  // Funkce pro autosave z editoru
-  const handleAutosave = async (offer: OfferItem) => {
-    // Lokálne uloženie
-    setOffers(prevOffers => {
-      const newOffers = [...prevOffers];
-      const idx = newOffers.findIndex(o => o.id === offer.id);
-      if (idx === -1) {
-        newOffers.push(offer);
-      } else {
-        newOffers[idx] = offer;
-      }
-      localStorage.setItem('offers', JSON.stringify(newOffers));
-      return newOffers;
-    });
-    
-    // Uloženie na server ak je prihlásený používateľ
-    if (currentUser) {
-      try {
-        setSyncActive(true);
-        console.log('Autosave: Odosielam ponuku na server', offer);
-        
-        // Nájdeme, či ponuka má už serverové ID
-        const serverOffer = serverOffers.find(so => 
-          (so.title === offer.name || so.name === offer.name) || 
-          (so._id && offer._id && so._id === offer._id)
-        );
-        
-        if (serverOffer && serverOffer._id) {
-          console.log('Autosave: Aktualizujem existujúcu ponuku ID:', serverOffer._id);
-          // Aktualizácia existujúcej ponuky
-          await offersService.updateOffer(serverOffer._id, offer)
-            .then((result) => {
-              console.log('Autosave: Ponuka automaticky aktualizovaná na serveri', result);
-              setNotification({ message: 'Ponuka bola automaticky uložená', type: 'success' });
-              // Aktualizujeme zoznam serverových ponúk
-              setServerOffers(prev => prev.map(item => 
-                item._id === serverOffer._id ? { ...result, _id: serverOffer._id } : item
-              ));
-            })
-            .catch(err => {
-              console.error('Chyba pri autosave na server:', err);
-              setNotification({ message: 'Chyba pri automatickom ukladaní na server: ' + (err.message || 'Neznáma chyba'), type: 'error' });
-            });
-        } else {
-          console.log('Autosave: Vytváram novú ponuku');
-          // Vytvorenie novej ponuky
-          await offersService.createOffer(offer)
-            .then(result => {
-              console.log('Autosave: Ponuka automaticky vytvorená na serveri', result);
-              setNotification({ message: 'Ponuka bola automaticky uložená', type: 'success' });
-              // Aktualizujeme zoznam serverových ponúk a lokálnu ponuku
-              offer._id = result._id; // Pridáme ID zo servera do lokálnej ponuky
-              setServerOffers(prev => [...prev, result]);
-            })
-            .catch(err => {
-              console.error('Chyba pri autosave na server:', err);
-              setNotification({ message: 'Chyba pri automatickom ukladaní na server: ' + (err.message || 'Neznáma chyba'), type: 'error' });
-            });
-        }
-      } catch (error) {
-        console.error('Chyba pri automatickom ukladaní:', error);
-        setNotification({ message: 'Chyba pri automatickom ukladaní: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
-      } finally {
-        setSyncActive(false);
-      }
-    } else {
-      console.log('Autosave: Užívateľ nie je prihlásený, ukladám len lokálne');
-      setNotification({ message: 'Zmeny boli uložené lokálne', type: 'info' });
-    }
-  };
-
-  // Funkce pro bezpečné ukládání do localStorage
-  const saveToLocalStorage = (key: string, data: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-      return true;
-    } catch (error) {
-      console.error(`Error saving to localStorage (${key}):`, error);
-      setNotification({ message: 'Chyba pri ukladaní zmien', type: 'error' });
-      return false;
-    }
-  };
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleNew = () => {
     setEditId(null);
@@ -1886,11 +1819,32 @@ function AppContent() {
     setView('form');
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    const offer = offers.find(o => o.id === id);
+    let serverError = null;
+    // Logovanie ID
+    console.log('Mazanie ponuky:', { id, offer });
+    // Ak je užívateľ prihlásený a ponuka má _id, vymaž aj na serveri
+    if (currentUser && offer && offer._id) {
+      try {
+        console.log('Volám deleteOffer na serveri s _id:', offer._id);
+        await offersService.deleteOffer(offer._id);
+        setNotification({ message: 'Ponuka bola vymazaná aj zo servera', type: 'success' });
+      } catch (err: any) {
+        serverError = err?.message || 'Chyba pri mazaní na serveri';
+        setNotification({ message: serverError, type: 'error' });
+      }
+    }
+    // Lokálne vymazanie
     setOffers(prevOffers => {
       const newOffers = prevOffers.filter(o => o.id !== id);
-      if (saveToLocalStorage('offers', newOffers)) {
-        setNotification({ message: 'Ponuka bola vymazaná', type: 'info' });
+      try {
+        localStorage.setItem('offers', JSON.stringify(newOffers));
+        if (!serverError) {
+          setNotification({ message: 'Ponuka bola vymazaná', type: 'info' });
+        }
+      } catch (error) {
+        setNotification({ message: 'Chyba pri ukladaní zmien', type: 'error' });
       }
       return newOffers;
     });
@@ -1930,213 +1884,160 @@ function AppContent() {
       const loadServerOffers = async () => {
         try {
           setSyncActive(true);
-          setNotification({ message: 'Načítavam ponuky zo servera...', type: 'info' });
-          console.log('Načítavam ponuky zo servera pre používateľa:', currentUser.email);
+          const serverOffers: ServerOffer[] = await offersService.getOffers();
           
-          // Načítanie vlastných ponúk používateľa
-          let userOffers: OfferItem[] = [];
-          try {
-            userOffers = await offersService.getOffers();
-            console.log('Načítané používateľove ponuky zo servera:', userOffers.length);
-          } catch (err) {
-            console.error('Chyba pri načítavaní ponúk:', err);
-            userOffers = []; // Fallback na prázdne pole v prípade chyby
-          }
-          
-          // Zabezpečíme, že máme vždy pole, nie undefined
-          const allServerOffers: OfferItem[] = userOffers || [];
-          
-          setServerOffers(allServerOffers);
-          
-          if (allServerOffers.length > 0) {
-            setNotification({ 
-              message: `Načítaných ${userOffers.length} ponúk`, 
-              type: 'success' 
+          console.log('Loaded from server:', serverOffers.length, 'offers');
+          if (serverOffers.length > 0) {
+            console.log('Sample server offer:', { 
+              id: serverOffers[0].id, 
+              _id: serverOffers[0]._id, 
+              localId: serverOffers[0].localId 
             });
-          } else {
-            setNotification({ message: 'Žiadne ponuky na serveri', type: 'info' });
           }
           
-          // Merge server offers with local offers
-          const mergedOffers: OfferItem[] = [...allServerOffers];
+          // Najprv skontrolujeme, či máme lokálne uložené ponuky
+          console.log('Local offers before merge:', offers.length);
           
-          // Add any local offers that don't exist on the server
-          let localOffers: OfferItem[] = [];
-          try {
-            const localData = localStorage.getItem('offers');
-            localOffers = localData ? JSON.parse(localData) : [];
-            // Kontrola, či je to pole
-            if (!Array.isArray(localOffers)) {
-              console.warn('Lokálne ponuky nie sú pole:', localOffers);
-              localOffers = [];
-            }
-          } catch (err) {
-            console.error('Chyba pri načítavaní lokálnych ponúk:', err);
-            localStorage.removeItem('offers'); // Vymažeme poškodený záznam
-            localOffers = [];
-          }
-
-          if (localOffers.length > 0) {
-            localOffers.forEach((localOffer: OfferItem) => {
-              // Check if this local offer exists on the server
-              const serverOffer = allServerOffers.find((so: OfferItem) => 
-                (so.title === localOffer.name || so.name === localOffer.name) ||
-                (so._id && localOffer._id && so._id === localOffer._id)
+          setServerOffers(serverOffers);
+          setOffers(prevOffers => {
+            // Zlúč podľa localId alebo _id
+            const updatedOffers = [...serverOffers]; // Začni so serverovými ponukami
+            
+            // Pridaj lokálne ponuky, ktoré nie sú na serveri
+            for (const localOffer of prevOffers) {
+              // Ak ponuka nemá _id a nemá localId, ktorý by sa zhodoval s niektorou ponukou na serveri
+              const hasMatchOnServer = serverOffers.some(
+                serverOffer => 
+                  (localOffer._id && serverOffer._id === localOffer._id) || // Zhoda podľa _id
+                  (localOffer.localId && serverOffer.localId === localOffer.localId) || // Zhoda podľa localId
+                  (serverOffer.id === localOffer.id) // Zhoda podľa id
               );
               
-              // If not found on server, add the local one
-              if (!serverOffer) {
-                mergedOffers.push(localOffer);
+              if (!hasMatchOnServer) {
+                updatedOffers.push(localOffer);
               }
-            });
-          }
-          
-          // Update local storage with the merged offers
-          localStorage.setItem('offers', JSON.stringify(mergedOffers));
-          setOffers(mergedOffers);
-          
-          console.log('Ponuky boli zlúčené (server + lokálne):', mergedOffers.length);
-        } catch (error) {
-          console.error('Chyba pri načítavaní ponúk zo servera:', error);
-          setNotification({ 
-            message: 'Chyba pri načítavaní ponúk: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), 
-            type: 'error' 
+            }
+            
+            console.log('Total merged offers:', updatedOffers.length);
+            
+            // Uloženie do localStorage
+            localStorage.setItem('offers', JSON.stringify(updatedOffers));
+            return updatedOffers;
           });
           
-          // Fallback na lokálne ponuky v prípade chyby
-          try {
-            const localData = localStorage.getItem('offers');
-            const localOffers = localData ? JSON.parse(localData) : [];
-            if (Array.isArray(localOffers)) {
-              setOffers(localOffers);
-              console.log('Použité lokálne ponuky:', localOffers.length);
-            } else {
-              setOffers([]);
-            }
-          } catch (err) {
-            console.error('Chyba pri načítavaní lokálnych ponúk:', err);
-            setOffers([]);
-          }
+          setNotification({ message: `Načítaných ${serverOffers.length} ponúk zo servera`, type: 'success' });
+        } catch (error) {
+          console.error('Chyba pri načítavaní ponúk zo servera:', error);
+          setNotification({ message: 'Chyba pri načítavaní ponúk: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
         } finally {
           setSyncActive(false);
         }
       };
-      
       loadServerOffers();
-    } else {
-      // Ak používateľ nie je prihlásený, načítaj aspoň lokálne ponuky
-      try {
-        const localData = localStorage.getItem('offers');
-        const localOffers = localData ? JSON.parse(localData) : [];
-        if (Array.isArray(localOffers)) {
-          setOffers(localOffers);
-          console.log('Použité lokálne ponuky (neprihlásený):', localOffers.length);
-        } else {
-          setOffers([]);
-        }
-      } catch (err) {
-        console.error('Chyba pri načítavaní lokálnych ponúk (neprihlásený):', err);
-        setOffers([]);
-      }
     }
-  }, [currentUser]);
+  }, [currentUser, offers]); // Pridané offers do závislostí
 
   // Úprava funkcie handleSave, aby ukladala na server
   const handleSave = async (offer: OfferItem) => {
-    try {
-      // Najprv lokálne uloženie
-      setOffers(prevOffers => {
-        const newOffers = [...prevOffers];
-        const idx = newOffers.findIndex(o => o.id === offer.id);
-        
-        if (idx === -1) {
-          newOffers.push(offer);
+    if (isSaving) return; // blokuj paralelné save
+    setIsSaving(true);
+    const offerWithLocalId = { ...offer, localId: offer.localId || offer.id };
+    let updatedOffer: any = null;
+    let usedId = offerWithLocalId._id;
+    
+    console.log('Saving offer:', { 
+      id: offerWithLocalId.id, 
+      _id: offerWithLocalId._id, 
+      localId: offerWithLocalId.localId,
+      isEdit: !!editId,
+      editId
+    });
+    
+    if (currentUser) {
+      setSyncActive(true);
+      try {
+        // Ak máme _id alebo editujeme existujúcu ponuku, vždy update
+        if (offerWithLocalId._id) {
+          console.log('Updating by _id', offerWithLocalId._id);
+          updatedOffer = await offersService.updateOffer(offerWithLocalId._id, offerWithLocalId);
+          usedId = offerWithLocalId._id;
+        } else if (editId) {
+          // Skús nájsť na serveri podľa localId alebo id
+          const serverOffers: ServerOffer[] = await offersService.getOffers();
+          
+          // Najprv hľadaj podľa localId ak existuje
+          let found = serverOffers.find(so => offerWithLocalId.localId && so.localId === offerWithLocalId.localId);
+          
+          // Potom skús hľadať podľa id
+          if (!found) {
+            found = serverOffers.find(so => so.id === editId || so._id === editId);
+          }
+          
+          if (found) {
+            console.log('Found server offer to update:', { foundId: found._id, editId });
+            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id });
+            usedId = found._id;
+          } else {
+            // Ak neexistuje ponuka na serveri, vytvor novú
+            console.log('Creating new offer, no match found for edit');
+            updatedOffer = await offersService.createOffer(offerWithLocalId);
+            usedId = updatedOffer._id;
+          }
         } else {
-          newOffers[idx] = offer;
+          // Skús nájsť na serveri podľa localId
+          const serverOffers: ServerOffer[] = await offersService.getOffers();
+          const found = serverOffers.find(so => so.localId === offerWithLocalId.localId);
+          if (found) {
+            console.log('Found by localId', found._id);
+            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id });
+            usedId = found._id;
+          } else {
+            // Ak naozaj neexistuje, až vtedy create
+            console.log('Creating new offer, no match found');
+            updatedOffer = await offersService.createOffer(offerWithLocalId);
+            usedId = updatedOffer._id;
+          }
         }
-        
+        // Prepíš ponuku v stave aj v localStorage podľa id/localId/_id
+        setOffers(prevOffers => {
+          const newOffers = prevOffers.map(o => (o.id === offerWithLocalId.id || o._id === usedId || o.localId === offerWithLocalId.localId || (editId && o.id === editId)) ? { ...offerWithLocalId, _id: usedId } : o);
+          localStorage.setItem('offers', JSON.stringify(newOffers));
+          return newOffers;
+        });
+        setServerOffers(prev => {
+          const exists = prev.some(o => o._id === usedId);
+          if (exists) {
+            return prev.map(o => o._id === usedId ? updatedOffer : o);
+          } else {
+            return [...prev, updatedOffer];
+          }
+        });
+        setNotification({ message: 'Ponuka bola úspešne uložená na server', type: 'success' });
+      } catch (error) {
+        console.error('Chyba pri ukladaní na server:', error);
+        setNotification({ message: 'Chyba pri ukladaní na server: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
+      } finally {
+        setSyncActive(false);
+        setIsSaving(false);
+      }
+    } else {
+      // Lokálne prepíš ponuku podľa id/localId
+      setOffers(prevOffers => {
+        const newOffers = prevOffers.map(o => (o.id === offerWithLocalId.id || o.localId === offerWithLocalId.localId) ? offerWithLocalId : o);
         localStorage.setItem('offers', JSON.stringify(newOffers));
         return newOffers;
       });
-      
       setNotification({ message: 'Ponuka bola uložená lokálne', type: 'success' });
-      console.log('Ponuka uložená lokálne', offer);
-      
-      // Potom uloženie na server ak je užívateľ prihlásený
-      if (currentUser) {
-        try {
-          setSyncActive(true);
-          setNotification({ message: 'Ukladám ponuku na server...', type: 'info' });
-          console.log('Ukladám ponuku na server...', offer);
-          
-          // Nájdeme, či ponuka má už serverové ID
-          const serverOffer = serverOffers.find((so: OfferItem) => 
-            (so.title === offer.name || so.name === offer.name) || 
-            (so._id && offer._id && so._id === offer._id)
-          );
-          
-          let result: any; // Explicitne typovanie výsledku
-          
-          if (serverOffer && serverOffer._id) {
-            console.log('Aktualizujem ponuku na serveri, ID:', serverOffer._id);
-            // Aktualizácia existujúcej ponuky
-            result = await offersService.updateOffer(serverOffer._id, offer);
-            setNotification({ message: 'Ponuka bola úspešne aktualizovaná na serveri', type: 'success' });
-            
-            // Aktualizujeme zoznam serverových ponúk
-            setServerOffers(prev => prev.map((item: OfferItem) => 
-              item._id === serverOffer._id ? { ...result, _id: serverOffer._id } : item
-            ));
-          } else {
-            console.log('Vytváram novú ponuku na serveri');
-            // Vytvorenie novej ponuky
-            result = await offersService.createOffer(offer);
-            setNotification({ message: 'Ponuka bola úspešne vytvorená na serveri', type: 'success' });
-            
-            // Pridáme ID zo servera do lokálnej ponuky
-            offer._id = result._id;
-            
-            // Aktualizujeme lokálne ponuky s ID zo servera
-            setOffers(prevOffers => {
-              const newOffers = [...prevOffers];
-              const idx = newOffers.findIndex(o => o.id === offer.id);
-              
-              if (idx !== -1) {
-                newOffers[idx] = {...newOffers[idx], _id: result._id};
-              }
-              localStorage.setItem('offers', JSON.stringify(newOffers));
-              return newOffers;
-            });
-            
-            // Aktualizujeme zoznam serverových ponúk
-            setServerOffers(prev => [...prev, result]);
-          }
-          
-          console.log('Server response:', result);
-        } catch (error) {
-          console.error('Chyba pri ukladaní ponuky na server:', error);
-          setNotification({ message: 'Chyba pri ukladaní na server: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
-          
-          // Return early without navigating back if there was a server error
-          return;
-        } finally {
-          setSyncActive(false);
-        }
-      } else {
-        console.log('Užívateľ nie je prihlásený, ponuka bola uložená len lokálne');
-      }
-      
-      // Návrat na zoznam ponúk
-      handleBack();
-    } catch (error) {
-      console.error('Neočakávaná chyba pri ukladaní:', error);
-      setNotification({ message: 'Neočakávaná chyba pri ukladaní: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), type: 'error' });
+      setIsSaving(false);
     }
   };
 
   const handleSettingsSave = (newSettings: CompanySettings) => {
-    if (saveToLocalStorage('companySettings', newSettings)) {
+    try {
+      localStorage.setItem('companySettings', JSON.stringify(newSettings));
       setNotification({ message: 'Nastavenia boli úspešne uložené', type: 'success' });
+    } catch (error) {
+      setNotification({ message: 'Chyba pri ukladaní zmien', type: 'error' });
     }
     setSettings(newSettings);
     setSettingsOpen(false);
@@ -2149,6 +2050,7 @@ function AppContent() {
     navigate('/login');
   };
 
+  // return pôvodného JSX obsahu na konci funkcie
   return (
     <div style={{ background: '#f5f6fa', minHeight: '100vh', padding: 0 }}>
       {/* User info and logout button */}
@@ -2202,7 +2104,6 @@ function AppContent() {
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <OfferForm
             onSave={handleSave}
-            onAutosave={handleAutosave}
             initial={editId ? offers.find(o => o.id === editId) : cloneData}
             onBack={handleBack}
             onNotify={(msg: string, type: 'success' | 'error' | 'info') => setNotification({ message: msg, type })}

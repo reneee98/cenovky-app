@@ -76,6 +76,7 @@ export interface OfferItem {
   title?: string;
   isPublic?: boolean;
   isShared?: boolean;
+  localId?: string;
 }
 
 // Auth related types

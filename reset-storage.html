@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset LocalStorage - Cenovky</title>
+    <style>
+        body {
+            font-family: 'Noto Sans', Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        button {
+            background: #2346a0;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 20px 0;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        h1 {
+            color: #2346a0;
+        }
+        .instructions {
+            background: #f8f8f8;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Reset LocalStorage - Cenovky</h1>
+    <p>Tento nástroj vymaže dáta v prehliadači a pomôže vyriešiť problémy s cenami v aplikácii.</p>
+    
+    <button onclick="resetStorage()">Vymazať dáta z prehliadača</button>
+    <div id="result"></div>
+    
+    <div class="instructions">
+        <h3>Postup:</h3>
+        <ol>
+            <li>Klikni na tlačidlo "Vymazať dáta z prehliadača"</li>
+            <li>Otvor <a href="http://localhost:5173/cenovky/" target="_blank">aplikáciu Cenovky</a></li>
+            <li>Prihlás sa znova do svojho účtu</li>
+            <li>Teraz by mali ceny fungovať správne</li>
+        </ol>
+    </div>
+
+    <script>
+        function resetStorage() {
+            // Vymazanie API URL
+            localStorage.removeItem('apiUrl');
+            
+            // Vymazanie authToken
+            localStorage.removeItem('token');
+            
+            // Vymazanie ponúk
+            localStorage.setItem('offers', JSON.stringify([]));
+            
+            // Zobraziť výsledok
+            document.getElementById('result').innerHTML = 
+                '<div class="success">✅ Dáta boli úspešne vymazané. Teraz prosím otvor aplikáciu a prihlás sa znova.</div>';
+        }
+    </script>
+</body>
+</html> 

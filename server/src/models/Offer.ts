@@ -9,6 +9,7 @@ export interface IOfferItem {
   image?: string;
   category?: string;
   order?: number;
+  qty?: number; // množstvo
 }
 
 // Rozhranie pre ponuku
@@ -19,6 +20,12 @@ export interface IOffer extends Document {
   totalPrice: number;
   userId: mongoose.Types.ObjectId | IUser;
   isPublic: boolean;
+  discount?: number;
+  vatEnabled?: boolean;
+  vatRate?: number;
+  tableNote?: string;
+  showDetails?: boolean;
+  total?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,6 +56,10 @@ const offerItemSchema = new Schema({
   order: {
     type: Number,
     default: 0
+  },
+  qty: {
+    type: Number,
+    default: 1
   }
 });
 
@@ -77,6 +88,30 @@ const offerSchema = new Schema({
   isPublic: {
     type: Boolean,
     default: false
+  },
+  discount: {
+    type: Number,
+    default: 0
+  },
+  vatEnabled: {
+    type: Boolean,
+    default: false
+  },
+  vatRate: {
+    type: Number,
+    default: 20
+  },
+  tableNote: {
+    type: String,
+    default: ''
+  },
+  showDetails: {
+    type: Boolean,
+    default: true
+  },
+  total: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true

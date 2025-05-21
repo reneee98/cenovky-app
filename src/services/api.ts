@@ -66,7 +66,95 @@ export const offersService = {
 
       const data = await response.json();
       console.log('Successfully loaded offers:', data.length);
-      return data;
+      
+      // Log raw data from the server to debug price issues
+      console.log('Raw server data first item:', data.length > 0 ? JSON.stringify(data[0], null, 2) : 'No data');
+      
+      // Transform server data to client format with proper number conversion
+      const transformedData = data.map((offer: any) => {
+        // Ensure we have a valid total
+        let offerTotal = 0;
+        if (typeof offer.total === 'number') {
+          offerTotal = offer.total;
+        } else if (typeof offer.total === 'string' && offer.total.trim() !== '') {
+          offerTotal = parseFloat(offer.total);
+        } else if (typeof offer.totalPrice === 'number') {
+          offerTotal = offer.totalPrice;
+        } else if (typeof offer.totalPrice === 'string' && offer.totalPrice.trim() !== '') {
+          offerTotal = parseFloat(offer.totalPrice);
+        }
+        
+        // Process items with careful price handling
+        const processedItems = Array.isArray(offer.items) ? offer.items.map((item: any) => {
+          // Handle price conversion
+          let numPrice = 0;
+          if (typeof item.price === 'number') {
+            numPrice = item.price;
+          } else if (typeof item.price === 'string' && item.price.trim() !== '') {
+            numPrice = parseFloat(item.price);
+          }
+          
+          // Handle quantity conversion
+          let numQty = 1;
+          if (typeof item.qty === 'number') {
+            numQty = item.qty;
+          } else if (typeof item.qty === 'string' && item.qty.trim() !== '') {
+            numQty = parseFloat(item.qty);
+          }
+          
+          console.log(`Item ${item.name}: Original price=${item.price} (${typeof item.price}), Converted=${numPrice}`);
+          
+          return {
+            id: item._id || Math.random().toString(36).substr(2, 9),
+            type: item.category || 'item',
+            title: item.name || '',
+            desc: item.description || '',
+            qty: numQty,
+            price: numPrice
+          };
+        }) : [];
+        
+        // Calculate the total from items if needed
+        if (offerTotal === 0 && processedItems.length > 0) {
+          offerTotal = processedItems
+            .filter((item: any) => item.type === 'item')
+            .reduce((sum: number, item: any) => sum + (item.qty * item.price), 0);
+        }
+        
+        return {
+          id: offer._id || offer.id,
+          _id: offer._id || offer.id,
+          name: offer.title || offer.name,
+          date: offer.createdAt || new Date().toISOString(),
+          client: '',
+          note: offer.description || '',
+          total: offerTotal,
+          items: processedItems,
+          vatEnabled: offer.vatEnabled ?? false,
+          vatRate: typeof offer.vatRate === 'number' ? offer.vatRate : typeof offer.vatRate === 'string' ? parseFloat(offer.vatRate) : 20,
+          tableNote: offer.tableNote || '',
+          discount: typeof offer.discount === 'number' ? offer.discount : typeof offer.discount === 'string' ? parseFloat(offer.discount) : 0,
+          showDetails: offer.showDetails ?? true,
+          isPublic: offer.isPublic || false
+        };
+      });
+      
+      // Log the transformed data
+      if (transformedData.length > 0) {
+        console.log('First item after transformation:', JSON.stringify(transformedData[0], null, 2));
+        
+        // Check price values in transformed items
+        if (transformedData[0].items && transformedData[0].items.length > 0) {
+          console.log('Transformed prices:', transformedData[0].items.map((item: any) => ({
+            title: item.title,
+            price: item.price,
+            type: typeof item.price,
+            qty: item.qty
+          })));
+        }
+      }
+      
+      return transformedData;
     } catch (error) {
       console.error('Chyba pri získavaní ponúk:', error);
       throw error;
@@ -129,15 +217,31 @@ export const offersService = {
         description: offer.note,
         items: offer.items.map(item => ({
           name: item.title,
-          price: item.price || 0,
-          description: item.desc,
-          category: item.type
+          price: Number(item.price) || 0,
+          qty: Number(item.qty) || 1,
+          description: item.desc || '',
+          category: item.type || 'item'
         })),
-        isPublic: offer.isPublic || false
+        isPublic: offer.isPublic || false,
+        discount: Number(offer.discount) || 0,
+        vatEnabled: offer.vatEnabled ?? false,
+        vatRate: Number(offer.vatRate) || 20,
+        tableNote: offer.tableNote || '',
+        showDetails: offer.showDetails ?? true,
+        total: Number(offer.total) || 0,
+        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0)
       };
 
-      console.log(`Sending POST to ${apiUrl}/offers`);
-      console.log('Request payload:', JSON.stringify(serverOffer));
+      console.log('Sending offer to server:', JSON.stringify(serverOffer, null, 2));
+
+      // Check price values before sending
+      if (serverOffer.items && serverOffer.items.length > 0) {
+        console.log('Client item prices before sending:', serverOffer.items.map(item => ({
+          name: item.name,
+          price: item.price,
+          priceType: typeof item.price
+        })));
+      }
 
       const response = await fetch(`${apiUrl}/offers`, {
         method: 'POST',
@@ -148,20 +252,10 @@ export const offersService = {
         body: JSON.stringify(serverOffer)
       });
 
-      console.log('Server response status:', response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Server error response:', errorText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch (e) {
-          errorData = { message: errorText || 'Unknown server error' };
-        }
-        
-        throw new Error(errorData.message || `Server responded with status: ${response.status}`);
+        throw new Error(errorText || `Server responded with status: ${response.status}`);
       }
 
       const responseData = await response.json();
@@ -193,33 +287,52 @@ export const offersService = {
     }
   },
 
-  // Aktualizácia ponuky
+  // Vymazanie ponuky
+  async deleteOffer(id: string) {
+    const apiUrl = getApiUrl();
+    const token = getAuthToken();
+    if (!token) throw new Error('Nie ste prihlásený.');
+    const response = await fetch(`${apiUrl}/offers/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Nepodarilo sa vymazať ponuku');
+    }
+    return true;
+  },
+
+  // Aktualizácia existujúcej ponuky
   async updateOffer(id: string, offer: OfferItem) {
     try {
-      console.log(`Aktualizujem ponuku ${id} na server:`, offer);
       const apiUrl = getApiUrl();
       const token = getAuthToken();
-      
-      if (!token) {
-        throw new Error('Chýba autorizačný token. Prosím, prihláste sa.');
-      }
-      
+      if (!token) throw new Error('Nie ste prihlásený.');
+
       // Transformácia klientskej ponuky na formát pre server
       const serverOffer = {
         title: offer.name,
         description: offer.note,
         items: offer.items.map(item => ({
           name: item.title,
-          price: item.price || 0,
-          description: item.desc,
-          category: item.type
+          price: Number(item.price) || 0,
+          qty: Number(item.qty) || 1,
+          description: item.desc || '',
+          category: item.type || 'item'
         })),
-        isPublic: offer.isPublic || false
+        isPublic: offer.isPublic || false,
+        discount: Number(offer.discount) || 0,
+        vatEnabled: offer.vatEnabled ?? false,
+        vatRate: Number(offer.vatRate) || 20,
+        tableNote: offer.tableNote || '',
+        showDetails: offer.showDetails ?? true,
+        total: Number(offer.total) || 0,
+        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0)
       };
 
-      console.log(`Sending PUT to ${apiUrl}/offers/${id}`);
-      console.log('Request payload:', JSON.stringify(serverOffer));
-      
+      console.log('Updating offer on server:', JSON.stringify(serverOffer, null, 2));
+
       const response = await fetch(`${apiUrl}/offers/${id}`, {
         method: 'PUT',
         headers: {
@@ -229,50 +342,18 @@ export const offersService = {
         body: JSON.stringify(serverOffer)
       });
 
-      console.log('Server response status:', response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Server error response:', errorText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch (e) {
-          errorData = { message: errorText || 'Unknown server error' };
-        }
-        
-        throw new Error(errorData.message || `Server responded with status: ${response.status}`);
+        throw new Error(errorText || `Server responded with status: ${response.status}`);
       }
 
       const responseData = await response.json();
       console.log('Server success response:', responseData);
       return responseData;
     } catch (error) {
-      console.error(`Chyba pri aktualizácii ponuky ${id}:`, error);
-      throw error;
-    }
-  },
-
-  // Vymazanie ponuky
-  async deleteOffer(id: string) {
-    try {
-      const response = await fetch(`${getApiUrl()}/offers/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Nepodarilo sa vymazať ponuku');
-      }
-
-      return true;
-    } catch (error) {
-      console.error(`Chyba pri vymazávaní ponuky ${id}:`, error);
+      console.error('Chyba pri aktualizácii ponuky:', error);
       throw error;
     }
   }
-}; 
+};

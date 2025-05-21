@@ -86,59 +86,50 @@ router.get('/:id', async (req: AuthRequest, res) => {
  */
 router.post('/', async (req: AuthRequest, res) => {
   try {
-    // Kontrola existencie používateľa
     if (!req.userId && !req.user?.id) {
       return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
     }
-    
     const userId = req.userId || req.user?.id;
-    
-    const { title, description, items, isPublic, totalPrice } = req.body;
-    
-    // Basic validation
+    const { title, description, items, isPublic, totalPrice, discount, vatEnabled, vatRate, tableNote, showDetails, total } = req.body;
     if (!title) {
       return res.status(400).json({ message: 'Názov ponuky je povinný' });
     }
-    
-    // Ensure items is an array
-    const offerItems = Array.isArray(items) ? items : [];
-    
-    // Calculate total price if not provided
+    const offerItems = Array.isArray(items) ? items.map(item => ({
+      name: item.name || item.title,
+      price: item.price || 0,
+      qty: item.qty ?? 1,
+      description: item.description || item.desc || '',
+      category: item.category || item.type || '',
+      image: item.image || '',
+      order: item.order ?? 0
+    })) : [];
     let calculatedTotalPrice = totalPrice;
     if (calculatedTotalPrice == null && offerItems.length > 0) {
-      calculatedTotalPrice = offerItems.reduce((sum: number, item: IOfferItem) => {
-        return sum + (Number(item.price) || 0);
-      }, 0);
+      calculatedTotalPrice = offerItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty ?? 1)), 0);
     }
-    
-    // Ensure user ID is a valid MongoDB ObjectId
     let userObjectId;
     try {
       userObjectId = new mongoose.Types.ObjectId(userId);
     } catch (err) {
       return res.status(400).json({ message: 'Neplatné ID používateľa' });
     }
-    
-    console.log(`Creating offer for user ID: ${userId}`);
-    
-    // Vytvorenie novej ponuky with userId field
     const newOffer = new Offer({
       title,
       description,
       items: offerItems,
-      userId: userObjectId, // Using userId field instead of user
+      userId: userObjectId,
       isPublic: isPublic || false,
-      totalPrice: calculatedTotalPrice || 0
+      totalPrice: calculatedTotalPrice || 0,
+      discount: discount || 0,
+      vatEnabled: vatEnabled ?? false,
+      vatRate: vatRate ?? 20,
+      tableNote: tableNote || '',
+      showDetails: showDetails ?? true,
+      total: total || 0
     });
-    
-    // Uloženie ponuky do databázy
     const savedOffer = await newOffer.save();
-    
-    console.log(`Successfully created offer with ID: ${savedOffer._id} for user: ${userId}`);
-    
     res.status(201).json(savedOffer);
   } catch (error: any) {
-    console.error('Chyba pri vytváraní ponuky:', error);
     res.status(500).json({ message: 'Chyba servera', error: error.message });
   }
 });
@@ -150,43 +141,34 @@ router.post('/', async (req: AuthRequest, res) => {
  */
 router.put('/:id', async (req: AuthRequest, res) => {
   try {
-    // Kontrola existencie používateľa
     if (!req.userId && !req.user?.id) {
       return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
     }
-    
     const userId = req.userId || req.user?.id;
-    
-    const { title, description, items, isPublic, totalPrice } = req.body;
-    
+    const { title, description, items, isPublic, totalPrice, discount, vatEnabled, vatRate, tableNote, showDetails, total } = req.body;
     if (!title) {
       return res.status(400).json({ message: 'Názov ponuky je povinný' });
     }
-    
-    // Nájdeme ponuku podľa ID
     let offer = await Offer.findById(req.params.id);
-    
     if (!offer) {
       return res.status(404).json({ message: 'Ponuka nebola nájdená' });
     }
-    
-    // Kontrola, či ponuka patrí aktuálnemu používateľovi
     if (offer.userId.toString() !== userId) {
       return res.status(403).json({ message: 'Nemáte oprávnenie na úpravu tejto ponuky' });
     }
-    
-    // Ensure items is an array
-    const offerItems = Array.isArray(items) ? items : [];
-    
-    // Calculate total price if not provided
+    const offerItems = Array.isArray(items) ? items.map(item => ({
+      name: item.name || item.title,
+      price: item.price || 0,
+      qty: item.qty ?? 1,
+      description: item.description || item.desc || '',
+      category: item.category || item.type || '',
+      image: item.image || '',
+      order: item.order ?? 0
+    })) : [];
     let calculatedTotalPrice = totalPrice;
     if (calculatedTotalPrice == null && offerItems.length > 0) {
-      calculatedTotalPrice = offerItems.reduce((sum: number, item: IOfferItem) => {
-        return sum + (Number(item.price) || 0);
-      }, 0);
+      calculatedTotalPrice = offerItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty ?? 1)), 0);
     }
-    
-    // Aktualizácia ponuky
     offer = await Offer.findByIdAndUpdate(
       req.params.id,
       {
@@ -194,14 +176,18 @@ router.put('/:id', async (req: AuthRequest, res) => {
         description,
         items: offerItems,
         isPublic: isPublic || false,
-        totalPrice: calculatedTotalPrice || 0
+        totalPrice: calculatedTotalPrice || 0,
+        discount: discount || 0,
+        vatEnabled: vatEnabled ?? false,
+        vatRate: vatRate ?? 20,
+        tableNote: tableNote || '',
+        showDetails: showDetails ?? true,
+        total: total || 0
       },
       { new: true }
     );
-    
     res.json(offer);
   } catch (error: any) {
-    console.error('Chyba pri aktualizácii ponuky:', error);
     res.status(500).json({ message: 'Chyba servera', error: error.message });
   }
 });
@@ -257,7 +243,7 @@ router.get('/public/all', async (req: AuthRequest, res) => {
     res.status(500).json({ message: 'Chyba servera', error: error.message });
   }
 });
-// Na koniec s�boru pred export default router;
+// Na koniec s�boru pred export default router;
 router.get('/test', async (req: any, res) => {
   try {
     console.log('Test endpoint called');
@@ -266,7 +252,7 @@ router.get('/test', async (req: any, res) => {
     const testOffer = new Offer({
       userId: new mongoose.Types.ObjectId('650000000000000000000000'),
       title: 'Test ' + Date.now(),
-      items: [{ name: 'Test polo�ka', price: 10 }],
+      items: [{ name: 'Test polo�ka', price: 10 }],
       totalPrice: 10
     });
     
