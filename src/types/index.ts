@@ -26,6 +26,18 @@ export interface SubtotalRow extends BaseRow {
 
 export type OfferRow = ItemRow | SectionRow | SubtotalRow;
 
+export interface ClientDetails {
+  name: string;
+  company?: string;
+  ico: string;
+  dic?: string;
+  icDph?: string;
+  address: string;
+  city: string;
+  zip: string;
+  country: string;
+}
+
 export interface OfferItem {
   id: string;
   name: string;
@@ -37,6 +49,11 @@ export interface OfferItem {
   vatEnabled: boolean;
   vatRate: number;
   tableNote: string;
+  clientDetails: ClientDetails | null;
+  discount?: number;
+  showDetails?: boolean;
+  isPublic?: boolean;
+  logo?: string;
 }
 
 export interface CompanySettings {

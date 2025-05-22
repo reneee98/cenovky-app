@@ -27,6 +27,7 @@ export interface IOffer extends Document {
   showDetails?: boolean;
   total?: number;
   logo?: string;
+  clientDetails?: any; // Pridané pole pre fakturačné údaje klienta
   createdAt: Date;
   updatedAt: Date;
 }
@@ -117,9 +118,46 @@ const offerSchema = new Schema({
   logo: {
     type: String,
     default: ''
+  },
+  clientDetails: {
+    type: Schema.Types.Mixed, // Umožní uložiť akýkoľvek JSON objekt
+    default: null,
+    required: false // Nechceme aby bolo povinné, ale ak je poskytnuté, chceme ho zachovať
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  // Pridáme možnosť na zachovanie všetkých kľúčov aj ak nie sú definované v schéme
+  minimize: false
+});
+
+// Zabezpečíme, že clientDetails sa správne uložia do MongoDB
+offerSchema.pre('save', function(next) {
+  // Kontrola existencie clientDetails a ich spracovanie
+  if (this.clientDetails === undefined) {
+    this.clientDetails = null;
+  }
+  console.log('Pre-save hook: clientDetails type:', typeof this.clientDetails);
+  console.log('Pre-save hook: clientDetails value:', JSON.stringify(this.clientDetails));
+  next();
+});
+
+// Upravíme toJSON a toObject metódy aby vždy zahrnuli clientDetails
+offerSchema.set('toJSON', {
+  transform: function(doc, ret) {
+    if (!ret.clientDetails) {
+      ret.clientDetails = null;
+    }
+    return ret;
+  }
+});
+
+offerSchema.set('toObject', {
+  transform: function(doc, ret) {
+    if (!ret.clientDetails) {
+      ret.clientDetails = null;
+    }
+    return ret;
+  }
 });
 
 // Vytvorenie modelu

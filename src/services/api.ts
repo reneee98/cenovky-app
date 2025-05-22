@@ -135,8 +135,21 @@ export const offersService = {
       const data = await response.json();
       console.log('Successfully loaded offers:', data.length);
       
-      // Log raw data from the server to debug price issues
-      console.log('Raw server data first item:', data.length > 0 ? JSON.stringify(data[0], null, 2) : 'No data');
+      // Log raw client details from the server data immediately 
+      console.log("=== RAW SERVER DATA CHECK ===");
+      if (data.length > 0) {
+        console.log("Raw server data has client details field:", 'clientDetails' in data[0]);
+        console.log("Raw data first offer fields:", Object.keys(data[0]).join(', '));
+        
+        if ('clientDetails' in data[0] && data[0].clientDetails) {
+          console.log("Raw clientDetails from server:", JSON.stringify(data[0].clientDetails));
+        } else {
+          console.log("clientDetails is missing or null in server response - THIS IS THE ISSUE");
+          
+          // Debugging: Log server response for the first item
+          console.log("First item from server (full):", JSON.stringify(data[0]));
+        }
+      }
       
       // Transform server data to client format with proper number conversion
       const transformedData = data.map((offer: any) => {
@@ -170,8 +183,6 @@ export const offersService = {
             numQty = parseFloat(item.qty);
           }
           
-          console.log(`Item ${item.name}: Original price=${item.price} (${typeof item.price}), Converted=${numPrice}`);
-          
           return {
             id: item._id || Math.random().toString(36).substr(2, 9),
             type: item.category || 'item',
@@ -189,6 +200,12 @@ export const offersService = {
             .reduce((sum: number, item: any) => sum + (item.qty * item.price), 0);
         }
         
+        // KRITICKÁ ČASŤ: Zabezpečíme, že clientDetails sa správne prenášajú z API
+        // Potrebujeme sa ubezpečiť, že clientDetails sa nestratia ani nezjednodušia
+        const clientDetailsObj = offer.clientDetails || null;
+        console.log(`Processing offer ${offer.title || offer.name}, clientDetails:`, 
+                   clientDetailsObj ? JSON.stringify(clientDetailsObj) : 'NULL');
+        
         return {
           id: offer._id || offer.id,
           _id: offer._id || offer.id,
@@ -204,28 +221,59 @@ export const offersService = {
           discount: typeof offer.discount === 'number' ? offer.discount : typeof offer.discount === 'string' ? parseFloat(offer.discount) : 0,
           showDetails: offer.showDetails ?? true,
           isPublic: offer.isPublic || false,
-          logo: offer.logo || ''
+          logo: offer.logo || '',
+          // Dôležité: Zakaždým explicitne skontrolujme clientDetails a uistíme sa, že je správne prenesený
+          clientDetails: clientDetailsObj,
+          localId: offer.localId || offer._id || offer.id
         };
       });
       
-      // Log the transformed data
+      // Posledná kontrola, že clientDetails sa nachádzajú v transformovaných dátach
       if (transformedData.length > 0) {
-        console.log('First item after transformation:', JSON.stringify(transformedData[0], null, 2));
+        console.log('First transformed offer clientDetails check:', 
+                  transformedData[0].clientDetails ? 'PRESENT' : 'MISSING');
         
-        // Check price values in transformed items
-        if (transformedData[0].items && transformedData[0].items.length > 0) {
-          console.log('Transformed prices:', transformedData[0].items.map((item: any) => ({
-            title: item.title,
-            price: item.price,
-            type: typeof item.price,
-            qty: item.qty
-          })));
+        if (transformedData[0].clientDetails) {
+          console.log('Transformed clientDetails content:', 
+                     JSON.stringify(transformedData[0].clientDetails));
         }
       }
       
       return transformedData;
     } catch (error) {
       console.error('Chyba pri získavaní ponúk:', error);
+      throw error;
+    }
+  },
+
+  // Test pripojenia MongoDB a ukladania clientDetails
+  async testMongoDBConnection() {
+    const apiUrl = getApiUrl();
+    const token = getAuthToken();
+    
+    if (!token) {
+      throw new Error('Nie ste prihlásený. Potrebujete sa prihlásiť na vykonanie testu.');
+    }
+    
+    try {
+      console.log('Testing MongoDB connection at:', apiUrl);
+      const response = await fetch(`${apiUrl}/offers/test-mongodb`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response from MongoDB test:', errorText);
+        throw new Error('Test MongoDB zlyhalo: ' + errorText);
+      }
+      
+      const data = await response.json();
+      console.log('MongoDB test results:', data);
+      return data;
+    } catch (error) {
+      console.error('Chyba pri teste MongoDB:', error);
       throw error;
     }
   },
@@ -274,6 +322,11 @@ export const offersService = {
     try {
       console.log('Odosielam ponuku na server:', offer);
       console.log('Logo v ponuke:', typeof offer.logo, offer.logo ? offer.logo.substring(0, 50) + '...' : 'žiadne');
+      console.log('ClientDetails v ponuke:', offer.clientDetails ? 'Present' : 'Not present');
+      if (offer.clientDetails) {
+        console.log('ClientDetails content to send:', JSON.stringify(offer.clientDetails));
+      }
+      
       const apiUrl = getApiUrl();
       const token = getAuthToken();
       
@@ -300,11 +353,13 @@ export const offersService = {
         showDetails: offer.showDetails ?? true,
         total: Number(offer.total) || 0,
         totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0),
-        logo: offer.logo || ''
+        logo: offer.logo || '',
+        clientDetails: offer.clientDetails // Explicitne zahrnieme clientDetails
       };
 
       console.log('Sending offer to server, logo included:', serverOffer.logo ? 'YES' : 'NO', 
                  serverOffer.logo ? `(${serverOffer.logo.length} chars)` : '');
+      console.log('Sending offer to server, clientDetails included:', serverOffer.clientDetails ? 'YES' : 'NO');
 
       // Check price values before sending
       if (serverOffer.items && serverOffer.items.length > 0) {
@@ -383,6 +438,10 @@ export const offersService = {
       if (!token) throw new Error('Nie ste prihlásený.');
 
       console.log('Updating offer on server, logo status:', typeof offer.logo, offer.logo ? 'Present' : 'Not present');
+      console.log('Updating offer on server, clientDetails:', offer.clientDetails ? 'Present' : 'Not present');
+      if (offer.clientDetails) {
+        console.log('ClientDetails content to send:', JSON.stringify(offer.clientDetails));
+      }
       
       // Transformácia klientskej ponuky na formát pre server
       const serverOffer = {
@@ -403,11 +462,13 @@ export const offersService = {
         showDetails: offer.showDetails ?? true,
         total: Number(offer.total) || 0,
         totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0),
-        logo: offer.logo || ''
+        logo: offer.logo || '',
+        clientDetails: offer.clientDetails // Explicitne zahrnieme clientDetails
       };
 
       console.log('Updating offer with logo included:', serverOffer.logo ? 'YES' : 'NO', 
                  serverOffer.logo ? `(${serverOffer.logo.length} chars)` : '');
+      console.log('Updating offer with clientDetails included:', serverOffer.clientDetails ? 'YES' : 'NO');
 
       const response = await fetch(`${apiUrl}/offers/${id}`, {
         method: 'PUT',

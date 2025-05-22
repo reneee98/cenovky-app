@@ -1776,7 +1776,7 @@ function SettingsForm({ settings, onSave, onBack }: {
   );
 }
 
-// Type for server offer
+// Importujem API služby// Add type for server offer
 type ServerOffer = OfferItem & { _id: string };
 
 function AppContent(): JSX.Element {
@@ -1956,91 +1956,19 @@ function AppContent(): JSX.Element {
             
             if (apiOffers[0].clientDetails) {
               console.log('ClientDetails content:', JSON.stringify(apiOffers[0].clientDetails));
-            } else {
-              console.warn('Server returned offers without clientDetails, this could be the issue');
-            }
-          } else {
-            console.log('No offers loaded from server');
-          }
-          
-          // Načítame existujúce lokálne ponuky, aby sme mohli zachovať fakturačné údaje
-          const localOffersStr = localStorage.getItem('offers');
-          const localOffers = localOffersStr ? JSON.parse(localOffersStr) : [];
-          console.log('Found local offers:', localOffers.length);
-          
-          // Logujeme stav clientDetails v lokálnych ponukách
-          if (localOffers.length > 0) {
-            const hasClientDetails = localOffers.some((o: any) => o.clientDetails);
-            console.log('Local offers have clientDetails:', hasClientDetails ? 'YES (at least one)' : 'NONE');
-            
-            if (hasClientDetails) {
-              const offerWithDetails = localOffers.find((o: any) => o.clientDetails);
-              if (offerWithDetails) {
-                console.log('Sample local clientDetails:', JSON.stringify(offerWithDetails.clientDetails));
-              }
             }
           }
-          
-          // Vytvoríme mapu lokálnych ponúk podľa ID/localId pre rýchly lookup
-          const localOffersMap = new Map();
-          localOffers.forEach((offer: OfferItem) => {
-            // Používame viacero kľúčov pre vyhľadanie, najprv localId, potom _id, nakoniec id
-            const key = offer.localId || offer._id || offer.id;
-            if (key) {
-              localOffersMap.set(key, offer);
-            }
-          });
-          
-          // DÔLEŽITÁ ČASŤ: Skontrolujme existenciu clientDetails v ponukách a zachovajme ich
-          const verifiedOffers = apiOffers.map(serverOffer => {
-            // Pokúsime sa nájsť odpovedajúcu lokálnu ponuku
-            let localOffer: OfferItem | undefined;
-            const possibleKeys = [
-              serverOffer.localId, 
-              serverOffer._id, 
-              serverOffer.id
-            ].filter(Boolean) as string[];
-            
-            // Skúsime nájsť zhodu medzi serverovou a lokálnou ponukou
-            for (const key of possibleKeys) {
-              if (localOffersMap.has(key)) {
-                localOffer = localOffersMap.get(key);
-                break;
-              }
-            }
-            
-            // Zlúčime dáta - uprednostníme clientDetails z lokálnej ponuky ak chýbajú na serveri
-            const mergedClientDetails = serverOffer.clientDetails || 
-                                     (localOffer && localOffer.clientDetails) || 
-                                     null;
-            
-            console.log(`Processing offer ${serverOffer.id || serverOffer._id}:`, {
-              serverHasDetails: !!serverOffer.clientDetails,
-              localHasDetails: !!(localOffer && localOffer.clientDetails),
-              finalHasDetails: !!mergedClientDetails
-            });
-            
-            if (mergedClientDetails) {
-              console.log('Using clientDetails:', JSON.stringify(mergedClientDetails));
-            }
-            
-            // Vrátime zlúčenú ponuku s explicitne nastavenou hodnotou clientDetails
-            return {
-              ...serverOffer,
-              clientDetails: mergedClientDetails
-            };
-          });
           
           // Nastavíme serverové ponuky do stavu
-          setServerOffers(verifiedOffers);
+          setServerOffers(apiOffers);
           
-          // Nastavíme ponuky do hlavného stavu
-          setOffers(verifiedOffers);
+          // Nastavíme ponuky do hlavného stavu, môžeme vynechať komplikované zlučovanie
+          // keďže serverové dáta by mali byť úplné
+          setOffers(apiOffers);
           
           // Uloženie do localStorage pre offline použitie
           try {
-            localStorage.setItem('offers', JSON.stringify(verifiedOffers));
-            console.log('Saved verified offers to localStorage with clientDetails preservation');
+            localStorage.setItem('offers', JSON.stringify(apiOffers));
           } catch (storageError) {
             console.error('Failed to save offers to localStorage:', storageError);
           }
@@ -2231,26 +2159,7 @@ function AppContent(): JSX.Element {
   };
 
   const handleLogout = () => {
-    // Zachovajme clientDetails aj pri odhlásení
-    // Najprv uložíme aktuálne ponuky s clientDetails do localStorage
-    try {
-      const currentOffers = [...offers];
-      // Explicitne skontrolujeme a zachováme clientDetails
-      const offersWithPreservedDetails = currentOffers.map(offer => ({
-        ...offer,
-        clientDetails: offer.clientDetails || null
-      }));
-      
-      console.log('Preserving offers with clientDetails before logout:', 
-                 offersWithPreservedDetails.length);
-      
-      // Uložíme do localStorage pre použitie po opätovnom prihlásení
-      localStorage.setItem('offers', JSON.stringify(offersWithPreservedDetails));
-    } catch (error) {
-      console.error('Error preserving offers during logout:', error);
-    }
-    
-    // Vyčistíme stav a redirektneme na login
+    // Jednoducho vyčistíme stav a redirektneme na login
     setServerOffers([]);
     logout();
     navigate('/login');
@@ -2265,40 +2174,19 @@ function AppContent(): JSX.Element {
       const result = await offersService.testMongoDBConnection();
       if (result && result.success) {
         setNotification({ 
-          message: 'Test MongoDB úspešný! Fakturačné údaje sa ukladajú správne.', 
+          message: 'Test MongoDB je úspešný! Fakturačné údaje sa správne ukladajú a načítavajú.', 
           type: 'success' 
         });
-        
-        console.log('MongoDB test results:', result);
-        
-        // Po úspešnom teste načítame ponuky znova zo servera
-        if (currentUser) {
-          setSyncActive(true);
-          try {
-            const refreshedOffers = await offersService.getOffers() as ApiOfferItem[];
-            console.log('Refreshed offers after test:', refreshedOffers.length);
-            
-            if (refreshedOffers.length > 0) {
-              setOffers(refreshedOffers);
-              setServerOffers(refreshedOffers);
-              localStorage.setItem('offers', JSON.stringify(refreshedOffers));
-            }
-          } catch (refreshError) {
-            console.error('Failed to refresh offers after test:', refreshError);
-          } finally {
-            setSyncActive(false);
-          }
-        }
       } else {
         setNotification({ 
-          message: 'Test MongoDB zlyhal. Fakturačné údaje sa neukladajú správne.', 
+          message: 'Test MongoDB nebol úspešný. Skontrolujte server logs.', 
           type: 'error' 
         });
       }
     } catch (error) {
-      console.error('Test MongoDB error:', error);
+      console.error('Error testing MongoDB:', error);
       setNotification({ 
-        message: 'Chyba pri testovaní MongoDB: ' + (error instanceof Error ? error.message : 'Neznáma chyba'), 
+        message: 'Chyba pri testovaní MongoDB: ' + (error instanceof Error ? error.message : 'Unknown error'), 
         type: 'error' 
       });
     } finally {
