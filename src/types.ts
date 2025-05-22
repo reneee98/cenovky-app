@@ -60,23 +60,24 @@ export interface CompanySettings {
 
 export interface OfferItem {
   id: string;
+  _id?: string;
+  localId: string;
   name: string;
   date: string;
   client: string;
-  clientDetails?: ClientDetails | null;
+  clientDetails: ClientDetails | null;
   note: string;
   total: number;
   items: OfferRow[];
   vatEnabled: boolean;
   vatRate: number;
   tableNote: string;
+  showDetails: boolean;
   discount: number;
-  showDetails?: boolean;
-  _id?: string;
-  title?: string;
-  isPublic?: boolean;
+  isPublic: boolean;
+  additionalInfo?: string;
+  logo?: string;
   isShared?: boolean;
-  localId?: string;
 }
 
 // Auth related types

@@ -1,21 +1,11 @@
-import express, { Request } from 'express';
+import express, { Request, Response } from 'express';
 import { Offer, IOfferItem } from '../models/Offer';
 import { authMiddleware } from '../middleware/auth';
 import mongoose from 'mongoose';
 
-// Rozšírenie Express Request typu
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    name?: string;
-  };
-  userId?: string; // For compatibility with updated middleware
-}
-
 const router = express.Router();
 
-// Middleware pre autentifikáciu - všetky routes budú vyžadovať prihlásenie
+// Len prihlásený používateľ môže pristupovať
 router.use(authMiddleware);
 
 /**
@@ -23,27 +13,20 @@ router.use(authMiddleware);
  * @desc    Získať všetky ponuky používateľa
  * @access  Private
  */
-router.get('/', async (req: AuthRequest, res) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    // Kontrola existencie používateľa
-    if (!req.userId && !req.user?.id) {
-      return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
+    const userId = (req as any).userId || (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized - missing user ID' });
     }
     
-    // Use userId from either source (prefer direct userId from middleware)
-    const userId = req.userId || req.user?.id;
-    
     console.log(`Fetching offers for user ID: ${userId}`);
-    
-    // Získame ponuky aktuálneho používateľa - using userId field
-    const offers = await Offer.find({ userId }).sort({ createdAt: -1 });
-    
+    const offers = await Offer.find({ userId });
     console.log(`Found ${offers.length} offers for user ID ${userId}`);
-    
-    res.json(offers);
+    res.status(200).json(offers);
   } catch (error: any) {
-    console.error('Chyba pri získavaní ponúk:', error);
-    res.status(500).json({ message: 'Chyba servera', error: error.message });
+    console.error('Error fetching offers:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -52,30 +35,25 @@ router.get('/', async (req: AuthRequest, res) => {
  * @desc    Získať konkrétnu ponuku
  * @access  Private
  */
-router.get('/:id', async (req: AuthRequest, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
-    // Kontrola existencie používateľa
-    if (!req.userId && !req.user?.id) {
-      return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
+    const userId = (req as any).userId || (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized - missing user ID' });
     }
     
-    const userId = req.userId || req.user?.id;
-    
-    const offer = await Offer.findById(req.params.id);
+    const offerId = req.params.id;
+    const offer = await Offer.findOne({ _id: offerId, userId });
     
     if (!offer) {
       return res.status(404).json({ message: 'Ponuka nebola nájdená' });
     }
     
-    // Kontrola, či ponuka patrí aktuálnemu používateľovi alebo je verejná
-    if (offer.userId.toString() !== userId && !offer.isPublic) {
-      return res.status(403).json({ message: 'Nemáte oprávnenie na zobrazenie tejto ponuky' });
-    }
-    
-    res.json(offer);
+    console.log(`Retrieved offer ${offerId} with logo:`, offer.logo ? 'YES' : 'NO');
+    res.status(200).json(offer);
   } catch (error: any) {
-    console.error('Chyba pri získavaní ponuky:', error);
-    res.status(500).json({ message: 'Chyba servera', error: error.message });
+    console.error('Error fetching offer:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -84,53 +62,33 @@ router.get('/:id', async (req: AuthRequest, res) => {
  * @desc    Vytvoriť novú ponuku
  * @access  Private
  */
-router.post('/', async (req: AuthRequest, res) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
-    if (!req.userId && !req.user?.id) {
-      return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
+    const userId = (req as any).userId || (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized - missing user ID' });
     }
-    const userId = req.userId || req.user?.id;
-    const { title, description, items, isPublic, totalPrice, discount, vatEnabled, vatRate, tableNote, showDetails, total } = req.body;
-    if (!title) {
-      return res.status(400).json({ message: 'Názov ponuky je povinný' });
-    }
-    const offerItems = Array.isArray(items) ? items.map(item => ({
-      name: item.name || item.title,
-      price: item.price || 0,
-      qty: item.qty ?? 1,
-      description: item.description || item.desc || '',
-      category: item.category || item.type || '',
-      image: item.image || '',
-      order: item.order ?? 0
-    })) : [];
-    let calculatedTotalPrice = totalPrice;
-    if (calculatedTotalPrice == null && offerItems.length > 0) {
-      calculatedTotalPrice = offerItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty ?? 1)), 0);
-    }
-    let userObjectId;
-    try {
-      userObjectId = new mongoose.Types.ObjectId(userId);
-    } catch (err) {
-      return res.status(400).json({ message: 'Neplatné ID používateľa' });
-    }
-    const newOffer = new Offer({
-      title,
-      description,
-      items: offerItems,
-      userId: userObjectId,
-      isPublic: isPublic || false,
-      totalPrice: calculatedTotalPrice || 0,
-      discount: discount || 0,
-      vatEnabled: vatEnabled ?? false,
-      vatRate: vatRate ?? 20,
-      tableNote: tableNote || '',
-      showDetails: showDetails ?? true,
-      total: total || 0
+    
+    console.log(`Creating offer for user ID: ${userId}`);
+    console.log('Received offer data:', {
+      title: req.body.title,
+      itemsCount: req.body.items?.length || 0,
+      logo: req.body.logo ? `Logo included (${req.body.logo.length} chars)` : 'No logo'
     });
-    const savedOffer = await newOffer.save();
+
+    const offer = new Offer({
+      ...req.body,
+      userId
+    });
+
+    const savedOffer = await offer.save();
+    console.log(`Successfully created offer with ID: ${savedOffer._id} for user: ${userId}`);
+    console.log('Saved offer includes logo:', savedOffer.logo ? 'YES' : 'NO');
+    
     res.status(201).json(savedOffer);
   } catch (error: any) {
-    res.status(500).json({ message: 'Chyba servera', error: error.message });
+    console.error('Error creating offer:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
@@ -139,56 +97,41 @@ router.post('/', async (req: AuthRequest, res) => {
  * @desc    Aktualizovať existujúcu ponuku
  * @access  Private
  */
-router.put('/:id', async (req: AuthRequest, res) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
-    if (!req.userId && !req.user?.id) {
-      return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
+    const userId = (req as any).userId || (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized - missing user ID' });
     }
-    const userId = req.userId || req.user?.id;
-    const { title, description, items, isPublic, totalPrice, discount, vatEnabled, vatRate, tableNote, showDetails, total } = req.body;
-    if (!title) {
-      return res.status(400).json({ message: 'Názov ponuky je povinný' });
+    
+    const offerId = req.params.id;
+    console.log(`Updating offer ${offerId} for user ${userId}`);
+    console.log('Update includes logo:', req.body.logo ? 'YES' : 'NO');
+    
+    // Ensure we're not overriding the logo field if it exists
+    const existingOffer = await Offer.findOne({ _id: offerId, userId });
+    if (existingOffer && !req.body.logo && existingOffer.logo) {
+      console.log('Logo field not in request but exists in DB. Preserving existing logo.');
+      req.body.logo = existingOffer.logo;
     }
-    let offer = await Offer.findById(req.params.id);
-    if (!offer) {
-      return res.status(404).json({ message: 'Ponuka nebola nájdená' });
-    }
-    if (offer.userId.toString() !== userId) {
-      return res.status(403).json({ message: 'Nemáte oprávnenie na úpravu tejto ponuky' });
-    }
-    const offerItems = Array.isArray(items) ? items.map(item => ({
-      name: item.name || item.title,
-      price: item.price || 0,
-      qty: item.qty ?? 1,
-      description: item.description || item.desc || '',
-      category: item.category || item.type || '',
-      image: item.image || '',
-      order: item.order ?? 0
-    })) : [];
-    let calculatedTotalPrice = totalPrice;
-    if (calculatedTotalPrice == null && offerItems.length > 0) {
-      calculatedTotalPrice = offerItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty ?? 1)), 0);
-    }
-    offer = await Offer.findByIdAndUpdate(
-      req.params.id,
-      {
-        title,
-        description,
-        items: offerItems,
-        isPublic: isPublic || false,
-        totalPrice: calculatedTotalPrice || 0,
-        discount: discount || 0,
-        vatEnabled: vatEnabled ?? false,
-        vatRate: vatRate ?? 20,
-        tableNote: tableNote || '',
-        showDetails: showDetails ?? true,
-        total: total || 0
-      },
+    
+    const offer = await Offer.findOneAndUpdate(
+      { _id: offerId, userId },
+      { ...req.body },
       { new: true }
     );
-    res.json(offer);
+    
+    if (!offer) {
+      console.log(`Offer ${offerId} not found or not owned by user ${userId}`);
+      return res.status(404).json({ message: 'Ponuka nebola nájdená' });
+    }
+    
+    console.log(`Successfully updated offer ${offerId}`);
+    console.log('Updated offer has logo:', offer.logo ? 'YES' : 'NO');
+    res.status(200).json(offer);
   } catch (error: any) {
-    res.status(500).json({ message: 'Chyba servera', error: error.message });
+    console.error('Error updating offer:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
@@ -197,34 +140,25 @@ router.put('/:id', async (req: AuthRequest, res) => {
  * @desc    Vymazať ponuku
  * @access  Private
  */
-router.delete('/:id', async (req: AuthRequest, res) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    // Kontrola existencie používateľa
-    if (!req.userId && !req.user?.id) {
-      return res.status(401).json({ message: 'Neautorizovaný prístup - chýba ID používateľa' });
+    const userId = (req as any).userId || (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized - missing user ID' });
     }
     
-    const userId = req.userId || req.user?.id;
+    const offerId = req.params.id;
     
-    // Nájdeme ponuku podľa ID
-    const offer = await Offer.findById(req.params.id);
+    const offer = await Offer.findOneAndDelete({ _id: offerId, userId });
     
     if (!offer) {
       return res.status(404).json({ message: 'Ponuka nebola nájdená' });
     }
     
-    // Kontrola, či ponuka patrí aktuálnemu používateľovi
-    if (offer.userId.toString() !== userId) {
-      return res.status(403).json({ message: 'Nemáte oprávnenie na vymazanie tejto ponuky' });
-    }
-    
-    // Vymazanie ponuky
-    await offer.deleteOne();
-    
-    res.json({ message: 'Ponuka bola úspešne vymazaná' });
+    res.status(200).json({ message: 'Ponuka bola úspešne vymazaná' });
   } catch (error: any) {
-    console.error('Chyba pri vymazávaní ponuky:', error);
-    res.status(500).json({ message: 'Chyba servera', error: error.message });
+    console.error('Error deleting offer:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -233,7 +167,7 @@ router.delete('/:id', async (req: AuthRequest, res) => {
  * @desc    Získať všetky verejné ponuky
  * @access  Private
  */
-router.get('/public/all', async (req: AuthRequest, res) => {
+router.get('/public/all', async (req: Request, res: Response) => {
   try {
     // Získame všetky verejné ponuky
     const offers = await Offer.find({ isPublic: true }).sort({ createdAt: -1 });
@@ -243,7 +177,8 @@ router.get('/public/all', async (req: AuthRequest, res) => {
     res.status(500).json({ message: 'Chyba servera', error: error.message });
   }
 });
-// Na koniec s�boru pred export default router;
+
+// Na koniec sboru pred export default router;
 router.get('/test', async (req: any, res) => {
   try {
     console.log('Test endpoint called');
@@ -252,7 +187,7 @@ router.get('/test', async (req: any, res) => {
     const testOffer = new Offer({
       userId: new mongoose.Types.ObjectId('650000000000000000000000'),
       title: 'Test ' + Date.now(),
-      items: [{ name: 'Test polo�ka', price: 10 }],
+      items: [{ name: 'Test poloka', price: 10 }],
       totalPrice: 10
     });
     
@@ -265,4 +200,5 @@ router.get('/test', async (req: any, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 export default router; 

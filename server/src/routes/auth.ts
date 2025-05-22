@@ -139,11 +139,55 @@ router.get('/me', auth, async (req: AuthRequest, res: Response) => {
     res.json({
       id: user._id,
       name: user.name,
-      email: user.email
+      email: user.email,
+      logo: user.logo || null
     });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ message: 'Chyba servera' });
+  }
+});
+
+// Aktualizácia loga používateľa
+router.post('/update-logo', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Neautorizovaný prístup' });
+    }
+
+    const { logo } = req.body;
+    
+    // Validácia loga
+    if (typeof logo !== 'string') {
+      return res.status(400).json({ message: 'Logo musí byť platný string (base64)' });
+    }
+
+    console.log(`Saving logo for user ${userId}, logo size: ${logo.length} chars`);
+    
+    // Aktualizácia loga v databáze
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { logo },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'Používateľ nebol nájdený' });
+    }
+
+    console.log(`Logo successfully updated for user ${userId}`);
+    
+    // Vráť aktualizovaného používateľa
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      logo: user.logo
+    });
+  } catch (error) {
+    console.error('Update logo error:', error);
+    res.status(500).json({ message: 'Chyba pri aktualizácii loga' });
   }
 });
 

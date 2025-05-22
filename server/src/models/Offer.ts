@@ -26,6 +26,7 @@ export interface IOffer extends Document {
   tableNote?: string;
   showDetails?: boolean;
   total?: number;
+  logo?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -112,6 +113,10 @@ const offerSchema = new Schema({
   total: {
     type: Number,
     default: 0
+  },
+  logo: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true

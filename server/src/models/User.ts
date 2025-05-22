@@ -6,6 +6,7 @@ export interface IUser extends mongoose.Document {
   name: string;
   email: string;
   password: string;
+  logo?: string; // Pridané logo ako voliteľné pole
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -30,6 +31,10 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Heslo je povinné'],
     minlength: [6, 'Heslo musí mať minimálne 6 znakov'],
     select: false, // default query won't include password
+  },
+  logo: {
+    type: String, // Logo uložené ako base64 string
+    required: false
   }
 }, {
   timestamps: true,

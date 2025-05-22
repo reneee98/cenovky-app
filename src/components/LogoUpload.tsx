@@ -4,9 +4,10 @@ interface LogoUploadProps {
   value: string;
   onChange: (value: string) => void;
   onRemove: () => void;
+  isCompanyLogo?: boolean;
 }
 
-export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
+export function LogoUpload({ value, onChange, onRemove, isCompanyLogo = false }: LogoUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -181,6 +182,19 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
         ) : value ? (
           <>
             <LogoDisplay value={value} />
+            {isCompanyLogo && (
+              <div style={{ 
+                background: '#f0f7ff', 
+                color: '#2346a0', 
+                fontSize: 11, 
+                padding: '2px 8px', 
+                borderRadius: 10, 
+                marginTop: 8,
+                fontWeight: 600
+              }}>
+                Firemné logo
+              </div>
+            )}
             <div style={{ color: '#666', fontSize: 14 }}>
               Kliknite pre zmenu alebo pretiahnite nové logo
             </div>
@@ -213,7 +227,7 @@ export function LogoUpload({ value, onChange, onRemove }: LogoUploadProps) {
             marginTop: 8
           }}
         >
-          Odstrániť logo
+          {isCompanyLogo ? 'Upraviť logo' : 'Odstrániť logo'}
         </button>
       )}
     </div>

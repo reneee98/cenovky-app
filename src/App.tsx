@@ -320,6 +320,8 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
   const [tableNote, setTableNote] = useState(initial?.tableNote || '');
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isPublic, setIsPublic] = useState(initial?.isPublic ?? false);
+  const [additionalInfo, setAdditionalInfo] = useState(initial?.additionalInfo || '');
+  const [offerLogo, setOfferLogo] = useState<string>(initial?.logo || settings.logo || '');
 
   // Polia pre novú položku
   const [rowTitle, setRowTitle] = useState('');
@@ -389,12 +391,9 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       return;
     }
     
-    // Zachovaj ID, _id a localId z pôvodnej ponuky (ak ide o editáciu)
     const id = initial?.id || Date.now().toString();
     const _id = initial?._id;
     const localId = initial?.localId || id;
-    
-    console.log('Form submitting with IDs:', { id, _id, localId, isEdit: !!initial });
     
     onSave({
       id,
@@ -412,7 +411,9 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       tableNote,
       showDetails,
       discount,
-      isPublic
+      isPublic,
+      additionalInfo,
+      logo: offerLogo
     });
     setSuccess(true);
     setTimeout(() => onBack(), 700);
@@ -481,6 +482,8 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
     setItems(items => [...items, newSubtotal]);
   };
 
+  
+
   async function handleExportHighResPDF() {
     try {
       // Vytvorenie tempDiv pre PDF export
@@ -502,49 +505,10 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
       
       // Pre-process logo to ensure it's properly loaded and displayed in PDF
       let logoResult = null;
-      if (settings.logo && settings.logo.length > 0) {
-        const logoPromise = new Promise<string | null>((resolve) => {
-          const img = new Image();
-          img.onload = async () => {
-            console.log("Logo loaded successfully:", img.naturalWidth, "x", img.naturalHeight);
-            
-            try {
-              // Force rendering through canvas for better PDF compatibility
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.max(img.naturalWidth, 300);
-              canvas.height = Math.max(img.naturalHeight, 100);
-              const ctx = canvas.getContext('2d');
-              
-              if (ctx) {
-                // White background for better handling of transparent logos
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0);
-                
-                const pngUrl = canvas.toDataURL('image/png');
-                console.log('Logo processed for PDF export');
-                resolve(pngUrl);
-              } else {
-                resolve(settings.logo);
-              }
-            } catch (e) {
-              console.error('Error processing logo:', e);
-              resolve(settings.logo);
-            }
-          };
-          
-          img.onerror = () => {
-            console.error("Failed to load logo image");
-            resolve(null);
-          };
-          
-          img.src = settings.logo;
-          // Set timeout to avoid hanging forever
-          setTimeout(() => resolve(settings.logo), 3000);
-        });
-        
-        // Počkaj na načítanie loga
-        logoResult = await logoPromise;
+      if (offerLogo && offerLogo.length > 0) {
+        logoResult = offerLogo;
+      } else if (settings.logo && settings.logo.length > 0) {
+        logoResult = settings.logo;
       }
 
       // Vytvoríme React root a vykreslíme PDF obsah
@@ -841,16 +805,21 @@ function OfferForm({ onBack, onSave, initial, onNotify, settings, setSettings }:
     <div className="offer-card offer-live-preview">
       {/* LOGO a HLAVIČKA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ minHeight: 60, minWidth: 180, display: 'flex', alignItems: 'center' }}>
-          {settings.logo && settings.logo.length > 0 ? (
-            <img
-              src={settings.logo}
-              alt="Logo"
-              style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001' }}
-            />
-          ) : (
-            <div style={{ color: '#bbb', fontSize: 36, fontWeight: 900, letterSpacing: 2 }}>LOGO</div>
-          )}
+        <div style={{ minHeight: 60, minWidth: 180, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <LogoUpload 
+            value={offerLogo} 
+            onChange={(logo: string) => setOfferLogo(logo)}
+            onRemove={() => {
+              if (offerLogo === settings.logo) {
+                // Ak je aktuálne nastavené firemné logo, vymažme ho úplne
+                setOfferLogo('');
+              } else {
+                // Ak je vlastné logo, vrátime sa k firemnému
+                setOfferLogo(settings.logo || '');
+              }
+            }}
+            isCompanyLogo={offerLogo === settings.logo && settings.logo !== ''}
+          />
         </div>
         <div style={{ textAlign: 'right', fontSize: 14, color: '#888', display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'Noto Sans', fontWeight: 400 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1794,11 +1763,11 @@ function SettingsForm({ settings, onSave, onBack }: {
 import { offersService } from './services/api';
 
 // Add type for server offer
-interface ServerOffer extends OfferItem {
-  _id: string;
-}
+type ServerOffer = OfferItem & { _id: string };
 
 function AppContent(): JSX.Element {
+  type ApiOfferItem = Omit<OfferItem, '_id'> & { _id: string };
+  
   const [offers, setOffers] = useState<OfferItem[]>(() => {
     try {
       const data = localStorage.getItem('offers');
@@ -1834,7 +1803,7 @@ function AppContent(): JSX.Element {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const [syncActive, setSyncActive] = useState(false);
-  const [serverOffers, setServerOffers] = useState<OfferItem[]>([]);
+  const [serverOffers, setServerOffers] = useState<(OfferItem & { _id: string })[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
@@ -1842,9 +1811,11 @@ function AppContent(): JSX.Element {
     setEditId(null);
     setCloneData({
       id: Date.now().toString(),
+      localId: Date.now().toString(),
       name: '',
       date: '',
       client: '',
+      clientDetails: null,
       note: '',
       total: 0,
       items: [],
@@ -1852,7 +1823,8 @@ function AppContent(): JSX.Element {
       vatRate: settings.defaultRate || 20,
       tableNote: '',
       discount: 0,
-      showDetails: true
+      showDetails: true,
+      isPublic: false
     });
     setView('form');
   };
@@ -1954,7 +1926,7 @@ function AppContent(): JSX.Element {
       const loadServerOffers = async () => {
         try {
           setSyncActive(true);
-          const serverOffers: ServerOffer[] = await offersService.getOffers();
+          const serverOffers = await offersService.getOffers() as ApiOfferItem[];
           
           console.log('Loaded from server:', serverOffers.length, 'offers');
           if (serverOffers.length > 0) {
@@ -1971,7 +1943,7 @@ function AppContent(): JSX.Element {
           setServerOffers(serverOffers);
           setOffers(prevOffers => {
             // Zlúč podľa localId alebo _id
-            const updatedOffers = [...serverOffers]; // Začni so serverovými ponukami
+            const updatedOffers: OfferItem[] = [...serverOffers]; // Začni so serverovými ponukami
             
             // Pridaj lokálne ponuky, ktoré nie sú na serveri
             for (const localOffer of prevOffers) {
@@ -1979,7 +1951,7 @@ function AppContent(): JSX.Element {
               const hasMatchOnServer = serverOffers.some(
                 serverOffer => 
                   (localOffer._id && serverOffer._id === localOffer._id) || // Zhoda podľa _id
-                  (localOffer.localId && serverOffer.localId === localOffer.localId) || // Zhoda podľa localId
+                  (localOffer.localId && serverOffer.localId === localOffer.localId) || // Zhoda podľa id
                   (serverOffer.id === localOffer.id) // Zhoda podľa id
               );
               
@@ -2005,13 +1977,21 @@ function AppContent(): JSX.Element {
       };
       loadServerOffers();
     }
-  }, [currentUser, offers]); // Pridané offers do závislostí
+  }, [currentUser]); // Removed 'offers' from dependencies to prevent infinite loop
 
   // Úprava funkcie handleSave, aby ukladala na server
   const handleSave = async (offer: OfferItem) => {
     if (isSaving) return; // blokuj paralelné save
     setIsSaving(true);
     const offerWithLocalId = { ...offer, localId: offer.localId || offer.id };
+    
+    // Pridané logovanie pre lepšiu diagnostiku
+    console.log('Saving offer with logo:', {
+      hasLogo: !!offerWithLocalId.logo,
+      logoLength: offerWithLocalId.logo ? offerWithLocalId.logo.length : 0,
+      logoPreview: offerWithLocalId.logo ? offerWithLocalId.logo.substring(0, 50) + '...' : 'none'
+    });
+    
     let updatedOffer: any = null;
     let usedId = offerWithLocalId._id;
     
@@ -2029,7 +2009,7 @@ function AppContent(): JSX.Element {
         // Ak máme _id alebo editujeme existujúcu ponuku, vždy update
         if (offerWithLocalId._id) {
           console.log('Updating by _id', offerWithLocalId._id);
-          updatedOffer = await offersService.updateOffer(offerWithLocalId._id, offerWithLocalId);
+          updatedOffer = await offersService.updateOffer(offerWithLocalId._id, offerWithLocalId as unknown as ServerOffer);
           usedId = offerWithLocalId._id;
         } else if (editId) {
           // Skús nájsť na serveri podľa localId alebo id
@@ -2045,12 +2025,12 @@ function AppContent(): JSX.Element {
           
           if (found) {
             console.log('Found server offer to update:', { foundId: found._id, editId });
-            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id });
+            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id } as unknown as ServerOffer);
             usedId = found._id;
           } else {
             // Ak neexistuje ponuka na serveri, vytvor novú
             console.log('Creating new offer, no match found for edit');
-            updatedOffer = await offersService.createOffer(offerWithLocalId);
+            updatedOffer = await offersService.createOffer(offerWithLocalId as unknown as ServerOffer);
             usedId = updatedOffer._id;
           }
         } else {
@@ -2059,12 +2039,12 @@ function AppContent(): JSX.Element {
           const found = serverOffers.find(so => so.localId === offerWithLocalId.localId);
           if (found) {
             console.log('Found by localId', found._id);
-            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id });
+            updatedOffer = await offersService.updateOffer(found._id, { ...offerWithLocalId, _id: found._id } as unknown as ServerOffer);
             usedId = found._id;
           } else {
             // Ak naozaj neexistuje, až vtedy create
             console.log('Creating new offer, no match found');
-            updatedOffer = await offersService.createOffer(offerWithLocalId);
+            updatedOffer = await offersService.createOffer(offerWithLocalId as unknown as ServerOffer);
             usedId = updatedOffer._id;
           }
         }

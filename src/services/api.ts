@@ -35,6 +35,74 @@ const getAuthToken = () => {
   return token;
 };
 
+// API služba pre prácu s používateľským profilom
+export const userService = {
+  // Aktualizácia loga používateľa
+  async updateLogo(logoData: string) {
+    try {
+      const apiUrl = getApiUrl();
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('Nie ste prihlásený.');
+      }
+      
+      console.log('Sending logo to server, size:', logoData ? `${logoData.length} chars` : 'no logo');
+      
+      const response = await fetch(`${apiUrl}/auth/update-logo`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ logo: logoData })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Logo update error:', errorText);
+        throw new Error(errorText || `Server responded with status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Logo updated successfully, got response:', data);
+      return data;
+    } catch (error) {
+      console.error('Error updating logo:', error);
+      throw error;
+    }
+  },
+  
+  // Získanie profilu používateľa
+  async getProfile() {
+    try {
+      const apiUrl = getApiUrl();
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('Nie ste prihlásený.');
+      }
+      
+      const response = await fetch(`${apiUrl}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Nepodarilo sa načítať profil používateľa');
+      }
+      
+      const data = await response.json();
+      console.log('Profile data loaded:', data);
+      return data;
+    } catch (error) {
+      console.error('Profile error:', error);
+      throw error;
+    }
+  }
+};
+
 // Služba pre prácu s ponukami
 export const offersService = {
   // Získanie všetkých ponúk používateľa
@@ -135,7 +203,8 @@ export const offersService = {
           tableNote: offer.tableNote || '',
           discount: typeof offer.discount === 'number' ? offer.discount : typeof offer.discount === 'string' ? parseFloat(offer.discount) : 0,
           showDetails: offer.showDetails ?? true,
-          isPublic: offer.isPublic || false
+          isPublic: offer.isPublic || false,
+          logo: offer.logo || ''
         };
       });
       
@@ -204,6 +273,7 @@ export const offersService = {
   async createOffer(offer: OfferItem) {
     try {
       console.log('Odosielam ponuku na server:', offer);
+      console.log('Logo v ponuke:', typeof offer.logo, offer.logo ? offer.logo.substring(0, 50) + '...' : 'žiadne');
       const apiUrl = getApiUrl();
       const token = getAuthToken();
       
@@ -229,10 +299,12 @@ export const offersService = {
         tableNote: offer.tableNote || '',
         showDetails: offer.showDetails ?? true,
         total: Number(offer.total) || 0,
-        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0)
+        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0),
+        logo: offer.logo || ''
       };
 
-      console.log('Sending offer to server:', JSON.stringify(serverOffer, null, 2));
+      console.log('Sending offer to server, logo included:', serverOffer.logo ? 'YES' : 'NO', 
+                 serverOffer.logo ? `(${serverOffer.logo.length} chars)` : '');
 
       // Check price values before sending
       if (serverOffer.items && serverOffer.items.length > 0) {
@@ -310,6 +382,8 @@ export const offersService = {
       const token = getAuthToken();
       if (!token) throw new Error('Nie ste prihlásený.');
 
+      console.log('Updating offer on server, logo status:', typeof offer.logo, offer.logo ? 'Present' : 'Not present');
+      
       // Transformácia klientskej ponuky na formát pre server
       const serverOffer = {
         title: offer.name,
@@ -328,10 +402,12 @@ export const offersService = {
         tableNote: offer.tableNote || '',
         showDetails: offer.showDetails ?? true,
         total: Number(offer.total) || 0,
-        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0)
+        totalPrice: offer.items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0),
+        logo: offer.logo || ''
       };
 
-      console.log('Updating offer on server:', JSON.stringify(serverOffer, null, 2));
+      console.log('Updating offer with logo included:', serverOffer.logo ? 'YES' : 'NO', 
+                 serverOffer.logo ? `(${serverOffer.logo.length} chars)` : '');
 
       const response = await fetch(`${apiUrl}/offers/${id}`, {
         method: 'PUT',
